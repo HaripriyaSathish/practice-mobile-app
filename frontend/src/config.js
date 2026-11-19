@@ -11,6 +11,9 @@ const MANUAL_API_URL = '';
 function detectApiUrl() {
   if (MANUAL_API_URL) return MANUAL_API_URL;
 
+  // APK / production builds: set in eas.json -> build.<profile>.env (the Render backend, which uses Neon)
+  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, '');
+
   // Web browser: backend runs on the same computer
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     return `http://${window.location.hostname}:${BACKEND_PORT}`;

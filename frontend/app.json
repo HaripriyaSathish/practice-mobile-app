@@ -10,6 +10,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.vetri.shoppinghall",
       "adaptiveIcon": {
         "backgroundColor": "#8B1E3F",
         "foregroundImage": "./assets/android-icon-foreground.png",
