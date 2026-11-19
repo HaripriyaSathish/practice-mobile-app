@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Vetri Shopping Hall",
+    "slug": "vetri-shopping-hall",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#8B1E3F",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.haripriyahp.vetrishoppinghall"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-web-browser",
+      "expo-font"
+    ],
+    "scheme": "vetrishoppinghall",
+    "extra": {
+      "eas": {
+        "projectId": "83826c6d-d580-4e94-bd06-e17a918dc75e"
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+# Python / Django
+venv/
+__pycache__/
+*.pyc
+backend/staticfiles/
+backend/*.sqlite3
+
+# Secrets - never commit
+.env
+!.env.example
+
+# Node / Expo
+node_modules/
+frontend/.expo/
+frontend/dist/
+frontend/web-build/
+
+# Tools
+.qodo/
+.DS_Store

@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: vetri-shopping-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: ./build.sh
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5
+      - key: DATABASE_URL
+        sync: false          # paste your Neon URL in the Render dashboard
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: CASHFREE_ENV
+        value: sandbox
+      - key: CASHFREE_APP_ID
+        sync: false
+      - key: CASHFREE_SECRET_KEY
+        sync: false
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: SITE_URL
+        sync: false          # e.g. https://vetri-shopping-backend.onrender.com/

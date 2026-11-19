@@ -1,0 +1,21 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "C:\\practice mobile app\\backend\\venv\\Scripts\\python.exe",
+      "runtimeArgs": ["C:\\practice mobile app\\backend\\manage.py", "runserver", "0.0.0.0:8001"],
+      "port": 8001,
+      "autoPort": false
+    },
+    {
+      "name": "frontend-web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["expo", "start", "--web", "--port", "8082"],
+      "cwd": "C:\\practice mobile app\\frontend",
+      "env": { "EXPO_PUBLIC_API_PORT": "8001", "BROWSER": "none" },
+      "port": 8082,
+      "autoPort": false
+    }
+  ]
+}

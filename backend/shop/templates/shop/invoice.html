@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Invoice {{ order.invoice_number }} - Vetri Shopping Hall</title>
+{% if not is_email %}
+<style>
+  @media print { .no-print { display: none !important; } body { background: #fff !important; } }
+</style>
+{% endif %}
+</head>
+<body style="margin:0;padding:0;background:#F6F1EC;font-family:'Segoe UI',Arial,sans-serif;color:#212121;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F1EC;padding:20px 10px;">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 4px 18px rgba(139,30,63,0.12);">
+
+  <!-- Header -->
+  <tr><td style="background:{% if order.status == 'CANCELLED' %}#5f5f5f{% else %}#8B1E3F{% endif %};padding:24px 28px;">
+    <table role="presentation" width="100%"><tr>
+      <td style="color:#fff;">
+        <div style="font-size:26px;font-weight:900;letter-spacing:0.3px;">Vetri <span style="color:#F4A300;">Shopping Hall</span></div>
+        <div style="font-size:12px;color:#F5D9E1;margin-top:2px;">Shop the best of the South</div>
+      </td>
+      <td align="right" style="color:#fff;">
+        <div style="font-size:20px;font-weight:800;letter-spacing:2px;">INVOICE</div>
+        <div style="font-size:12px;color:#F5D9E1;margin-top:2px;">{{ order.invoice_number }}</div>
+      </td>
+    </tr></table>
+  </td></tr>
+  <!-- Kolam-style gold strip -->
+  <tr><td style="height:6px;background:repeating-linear-gradient(90deg,#F4A300 0 14px,#D4A017 14px 18px,#8B1E3F 18px 22px);background-color:#F4A300;"></td></tr>
+
+  {% if is_email %}
+  <tr><td style="padding:22px 28px 0;">
+    <div style="font-size:18px;font-weight:700;color:#8B1E3F;">Vanakkam {{ order.full_name }}!</div>
+    <div style="font-size:14px;color:#555;margin-top:6px;line-height:1.5;">
+      Thank you for shopping with Vetri Shopping Hall. Your order <b>#{{ order.id }}</b> is confirmed. Your invoice is below.
+    </div>
+  </td></tr>
+  {% endif %}
+
+  <!-- Order meta -->
+  <tr><td style="padding:22px 28px 6px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td valign="top" width="50%" style="padding-right:10px;">
+        <div style="font-size:11px;font-weight:700;color:#8B1E3F;letter-spacing:1px;">BILLED / SHIPPED TO</div>
+        <div style="font-size:14px;font-weight:700;margin-top:6px;">{{ order.full_name }}</div>
+        <div style="font-size:13px;color:#555;line-height:1.5;margin-top:2px;">{{ order.address }}<br>Phone: {{ order.phone }}<br>{{ order.user.email }}</div>
+      </td>
+      <td valign="top" width="50%" style="padding-left:10px;">
+        <table role="presentation" width="100%" style="font-size:13px;">
+          <tr><td style="color:#777;padding:2px 0;">Order no.</td><td align="right" style="font-weight:700;">#{{ order.id }}</td></tr>
+          <tr><td style="color:#777;padding:2px 0;">Order date</td><td align="right">{{ order.created_at|date:"d M Y, h:i A" }}</td></tr>
+          <tr><td style="color:#777;padding:2px 0;">Payment</td><td align="right">{{ order.get_payment_method_display }}</td></tr>
+          <tr><td style="color:#777;padding:2px 0;">Payment status</td><td align="right">
+            {% if order.payment_status == "PAID" %}<span style="background:#1E8E3E;color:#fff;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;">PAID</span>
+            {% elif order.payment_status == "COD" %}<span style="background:#F4A300;color:#3a2500;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;">PAY ON DELIVERY</span>
+            {% else %}<span style="background:#D32F2F;color:#fff;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;">{{ order.get_payment_status_display|upper }}</span>{% endif %}
+          </td></tr>
+          {% if order.cf_payment_id %}<tr><td style="color:#777;padding:2px 0;">Transaction id</td><td align="right" style="font-size:12px;">{{ order.cf_payment_id }}</td></tr>{% endif %}
+          {% if order.status == "CANCELLED" %}
+          <tr><td style="color:#777;padding:2px 0;">Cancelled</td><td align="right" style="color:#D32F2F;">{{ order.cancelled_at|date:"d M Y" }}</td></tr>
+          {% if order.cancel_reason %}<tr><td style="color:#777;padding:2px 0;">Reason</td><td align="right" style="font-size:12px;">{{ order.cancel_reason }}</td></tr>{% endif %}
+          {% if order.refund_status %}<tr><td style="color:#777;padding:2px 0;">Refund</td><td align="right" style="font-weight:700;color:{% if order.refund_status == 'FAILED' %}#D32F2F{% else %}#1E8E3E{% endif %};">{{ order.get_refund_status_display }}</td></tr>{% endif %}
+          {% endif %}
+          <tr><td style="color:#777;padding:2px 0;">Order status</td><td align="right" style="font-weight:700;color:#8B1E3F;">{{ order.get_status_display }}</td></tr>
+        </table>
+      </td>
+    </tr></table>
+  </td></tr>
+
+  <!-- Items -->
+  <tr><td style="padding:14px 28px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+      <tr style="background:#FFF3D6;">
+        <th align="left" style="padding:10px;color:#8B1E3F;border-bottom:2px solid #F4A300;">Item</th>
+        <th align="center" style="padding:10px;color:#8B1E3F;border-bottom:2px solid #F4A300;">Qty</th>
+        <th align="right" style="padding:10px;color:#8B1E3F;border-bottom:2px solid #F4A300;">Price</th>
+        <th align="right" style="padding:10px;color:#8B1E3F;border-bottom:2px solid #F4A300;">Total</th>
+      </tr>
+      {% for item in items %}
+      <tr style="background:{% cycle '#ffffff' '#FCF8F4' %};">
+        <td style="padding:10px;border-bottom:1px solid #EFE6DD;">{{ item.product_name }}</td>
+        <td align="center" style="padding:10px;border-bottom:1px solid #EFE6DD;">{{ item.quantity }}</td>
+        <td align="right" style="padding:10px;border-bottom:1px solid #EFE6DD;">&#8377;{{ item.price|floatformat:2 }}</td>
+        <td align="right" style="padding:10px;border-bottom:1px solid #EFE6DD;font-weight:600;">&#8377;{{ item.subtotal|floatformat:2 }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </td></tr>
+
+  <!-- Totals -->
+  <tr><td style="padding:0 28px 20px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td width="45%"></td>
+      <td width="55%">
+        <table role="presentation" width="100%" style="font-size:13px;">
+          <tr><td style="padding:4px 0;color:#777;">Total MRP</td><td align="right">&#8377;{{ mrp_total|floatformat:2 }}</td></tr>
+          {% if savings > 0 %}<tr><td style="padding:4px 0;color:#1E8E3E;">Discount</td><td align="right" style="color:#1E8E3E;">- &#8377;{{ savings|floatformat:2 }}</td></tr>{% endif %}
+          <tr><td style="padding:4px 0;color:#777;">Delivery</td><td align="right" style="color:#1E8E3E;">FREE</td></tr>
+          <tr><td colspan="2" style="border-top:2px dashed #E8E0D8;padding-top:6px;"></td></tr>
+          <tr>
+            <td style="padding:8px 12px;background:#8B1E3F;color:#fff;font-weight:800;font-size:15px;border-radius:8px 0 0 8px;">Grand Total</td>
+            <td align="right" style="padding:8px 12px;background:#8B1E3F;color:#F4A300;font-weight:900;font-size:17px;border-radius:0 8px 8px 0;">&#8377;{{ order.total_amount|floatformat:2 }}</td>
+          </tr>
+        </table>
+      </td>
+    </tr></table>
+  </td></tr>
+
+  {% if is_email and invoice_link %}
+  <tr><td align="center" style="padding:0 28px 22px;">
+    <a href="{{ invoice_link }}" style="display:inline-block;background:#F4A300;color:#3a2500;text-decoration:none;font-weight:800;padding:12px 26px;border-radius:10px;font-size:14px;">View / Download Invoice</a>
+  </td></tr>
+  {% endif %}
+
+  {% if not is_email %}
+  <tr class="no-print"><td align="center" style="padding:0 28px 22px;">
+    <button onclick="window.print()" style="background:#8B1E3F;color:#fff;border:0;font-weight:700;padding:12px 26px;border-radius:10px;font-size:14px;cursor:pointer;">&#128438; Print / Save as PDF</button>
+  </td></tr>
+  {% endif %}
+
+  <!-- Footer -->
+  <tr><td style="background:#FFF3D6;padding:16px 28px;text-align:center;font-size:12px;color:#7a5a2a;line-height:1.6;">
+    Nandri! &#128591; Thank you for shopping with <b style="color:#8B1E3F;">Vetri Shopping Hall</b>.<br>
+    This is a computer-generated invoice for a practice project and does not need a signature.
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>

@@ -1,0 +1,12 @@
+Django>=5.2,<6
+djangorestframework
+django-cors-headers
+PyMySQL
+cryptography
+Pillow
+python-dotenv
+django-jazzmin
+psycopg[binary]
+dj-database-url
+gunicorn
+whitenoise

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Payment {{ order.get_payment_status_display }} - Vetri Shopping Hall</title>
+<style>
+  body { margin:0; font-family:'Segoe UI',Arial,sans-serif; background:#F6F1EC; color:#212121; }
+  .top { background:#8B1E3F; color:#fff; padding:18px 22px; font-size:22px; font-weight:900; }
+  .top span { color:#F4A300; }
+  .card { max-width:420px; margin:24px auto; background:#fff; border-radius:14px; padding:28px 24px; text-align:center; box-shadow:0 4px 18px rgba(139,30,63,.12); }
+  .icon { width:72px; height:72px; border-radius:36px; margin:0 auto 12px; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  h2 { margin:6px 0; }
+  .muted { color:#777; font-size:14px; line-height:1.5; }
+  a.btn { display:inline-block; margin-top:20px; background:#F4A300; color:#3a2500; text-decoration:none; font-weight:800; padding:13px 26px; border-radius:10px; }
+</style>
+</head>
+<body>
+<div class="top">Vetri <span>Shopping Hall</span></div>
+<div class="card">
+  {% if order.payment_status == "PAID" %}
+    <div class="icon" style="background:#1E8E3E;">&#10003;</div>
+    <h2 style="color:#1E8E3E;">Payment successful</h2>
+    <p class="muted">&#8377;{{ order.total_amount|floatformat:2 }} received for order #{{ order.id }}.<br>Invoice has been emailed to {{ order.user.email }}.</p>
+  {% else %}
+    <div class="icon" style="background:#D32F2F;">!</div>
+    <h2 style="color:#D32F2F;">Payment not completed</h2>
+    <p class="muted">Order #{{ order.id }} is still unpaid. You can retry from <b>My Orders</b> in the app.</p>
+    {% if error %}<p class="muted" style="color:#D32F2F;">{{ error }}</p>{% endif %}
+  {% endif %}
+  {% if app_return %}
+    <a class="btn" href="{{ app_return }}">Return to Vetri Shopping Hall app</a>
+    <script>setTimeout(function () { window.location.href = "{{ app_return|escapejs }}"; }, 1500);</script>
+  {% else %}
+    <p class="muted" style="margin-top:18px;">You can close this tab and go back to the app.</p>
+  {% endif %}
+</div>
+</body>
+</html>

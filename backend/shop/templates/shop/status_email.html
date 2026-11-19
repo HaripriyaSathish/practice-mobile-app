@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ title }}</title></head>
+<body style="margin:0;padding:0;background:#F6F1EC;font-family:'Segoe UI',Arial,sans-serif;color:#212121;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F1EC;padding:20px 10px;">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#fff;border-radius:14px;overflow:hidden;">
+  <tr><td style="background:#8B1E3F;padding:20px 26px;color:#fff;">
+    <div style="font-size:24px;font-weight:900;">Vetri <span style="color:#F4A300;">Shopping Hall</span></div>
+  </td></tr>
+  <tr><td style="height:6px;background:#F4A300;"></td></tr>
+  <tr><td style="padding:26px;">
+    <div style="display:inline-block;padding:5px 14px;border-radius:14px;font-size:12px;font-weight:800;color:#fff;
+      background:{% if order.status == 'DELIVERED' %}#1E8E3E{% elif order.status == 'CANCELLED' %}#D32F2F{% elif order.status == 'SHIPPED' %}#1565C0{% else %}#8B1E3F{% endif %};">
+      {{ order.get_status_display|upper }}
+    </div>
+    <div style="font-size:20px;font-weight:800;color:#8B1E3F;margin-top:14px;">{{ title }} - Order #{{ order.id }}</div>
+    <div style="font-size:14px;color:#555;margin-top:8px;line-height:1.6;">Vanakkam {{ order.full_name }},<br>{{ message }}</div>
+    {% if order.status == "CANCELLED" %}
+    <div style="margin-top:14px;background:#FFF3D6;border-left:4px solid #F4A300;padding:10px 14px;border-radius:6px;font-size:13px;color:#5a4320;line-height:1.6;">
+      {% if order.cancel_reason %}<b>Reason:</b> {{ order.cancel_reason }}<br>{% endif %}
+      {% if order.refund_status == "SUCCESS" %}<b>Refund:</b> &#8377;{{ order.total_amount|floatformat:2 }} refunded to your original payment method.
+      {% elif order.refund_status == "PENDING" %}<b>Refund:</b> &#8377;{{ order.total_amount|floatformat:2 }} refund initiated. It usually reaches you in 5-7 working days.
+      {% elif order.refund_status == "FAILED" %}<b>Refund:</b> We could not start your refund automatically. Our team will contact you.
+      {% elif order.payment_method == "COD" %}No payment was collected for this Cash on Delivery order.
+      {% else %}No payment was collected for this order.{% endif %}
+    </div>
+    {% endif %}
+
+    <!-- progress -->
+    {% if order.status != "CANCELLED" %}
+    <table role="presentation" width="100%" style="margin-top:20px;font-size:11px;text-align:center;">
+      <tr>
+        <td style="padding:6px;border-radius:6px;background:#8B1E3F;color:#fff;font-weight:700;">Placed</td>
+        <td style="padding:6px;border-radius:6px;font-weight:700;{% if order.status == 'CONFIRMED' or order.status == 'SHIPPED' or order.status == 'DELIVERED' %}background:#8B1E3F;color:#fff;{% else %}background:#EFE6DD;color:#999;{% endif %}">Confirmed</td>
+        <td style="padding:6px;border-radius:6px;font-weight:700;{% if order.status == 'SHIPPED' or order.status == 'DELIVERED' %}background:#8B1E3F;color:#fff;{% else %}background:#EFE6DD;color:#999;{% endif %}">Shipped</td>
+        <td style="padding:6px;border-radius:6px;font-weight:700;{% if order.status == 'DELIVERED' %}background:#1E8E3E;color:#fff;{% else %}background:#EFE6DD;color:#999;{% endif %}">Delivered</td>
+      </tr>
+    </table>
+    {% endif %}
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;font-size:13px;border-collapse:collapse;">
+      {% for item in items %}
+      <tr><td style="padding:8px 0;border-bottom:1px solid #EFE6DD;">{{ item.product_name }} &times; {{ item.quantity }}</td>
+          <td align="right" style="padding:8px 0;border-bottom:1px solid #EFE6DD;">&#8377;{{ item.subtotal|floatformat:2 }}</td></tr>
+      {% endfor %}
+      <tr><td style="padding:10px 0;font-weight:800;color:#8B1E3F;">Total</td>
+          <td align="right" style="padding:10px 0;font-weight:900;color:#8B1E3F;">&#8377;{{ order.total_amount|floatformat:2 }}</td></tr>
+    </table>
+    <div style="font-size:12px;color:#777;margin-top:6px;">Delivering to: {{ order.address }}</div>
+
+    {% if invoice_link %}
+    <div style="text-align:center;margin-top:22px;">
+      <a href="{{ invoice_link }}" style="display:inline-block;background:#F4A300;color:#3a2500;text-decoration:none;font-weight:800;padding:12px 26px;border-radius:10px;font-size:14px;">View Invoice</a>
+    </div>
+    {% endif %}
+  </td></tr>
+  <tr><td style="background:#FFF3D6;padding:14px;text-align:center;font-size:12px;color:#7a5a2a;">Nandri for shopping with Vetri Shopping Hall &#128591;</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>
