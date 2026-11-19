@@ -4,8 +4,12 @@ from django.utils import timezone
 
 
 class EmailOTP(models.Model):
-    """One-time password sent to an email address for login."""
+    """One-time password sent to an email address (sign-up, login or password reset)."""
+    PURPOSE_CHOICES = [("signup", "Sign up"), ("login", "Login"), ("reset", "Password reset")]
+
     email = models.EmailField(db_index=True)
+    purpose = models.CharField(max_length=10, choices=PURPOSE_CHOICES, default="login")
+    role = models.CharField(max_length=10, default="buyer")
     code = models.CharField(max_length=6)
     created_at = models.DateTimeField(auto_now_add=True)
     attempts = models.PositiveSmallIntegerField(default=0)
@@ -21,14 +25,30 @@ class EmailOTP(models.Model):
         return age.total_seconds() > settings.OTP_EXPIRY_MINUTES * 60
 
     def __str__(self):
-        return f"{self.email} ({'used' if self.is_used else 'active'})"
+        return f"{self.email} - {self.purpose} ({'used' if self.is_used else 'active'})"
 
 
 class Profile(models.Model):
-    """Extra details for a customer (user logs in with email, no password)."""
+    """Extra details for every account. `role` decides whether it is a buyer or a seller account."""
+    ROLE_BUYER, ROLE_SELLER = "buyer", "seller"
+    ROLE_CHOICES = [(ROLE_BUYER, "Buyer"), (ROLE_SELLER, "Seller")]
+
     user = models.OneToOneField(settings.AUTH_USER_MODEL, related_name="profile", on_delete=models.CASCADE)
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_BUYER, db_index=True)
     full_name = models.CharField(max_length=120, blank=True)
     phone = models.CharField(max_length=15, blank=True)
+    email_verified = models.BooleanField(default=False)
+    # ---- seller only ----
+    shop_name = models.CharField(max_length=120, blank=True)
+    shop_description = models.TextField(blank=True)
+    gstin = models.CharField("GSTIN", max_length=20, blank=True)
+    is_approved = models.BooleanField(
+        default=False, help_text="Sellers can list products only after the admin approves them")
+
+    @property
+    def is_seller(self):
+        return self.role == self.ROLE_SELLER
 
     def __str__(self):
-        return self.full_name or self.user.email
+        label = self.shop_name if self.is_seller and self.shop_name else (self.full_name or self.user.email)
+        return f"{label} ({self.get_role_display()})"

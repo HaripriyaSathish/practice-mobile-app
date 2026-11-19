@@ -25,11 +25,13 @@ class ProductImageSerializer(serializers.ModelSerializer):
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.name", read_only=True)
     discount_percent = serializers.IntegerField(read_only=True)
+    seller_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = Product
         fields = ["id", "name", "slug", "brand", "price", "mrp", "discount_percent", "image",
-                  "rating", "rating_count", "stock", "category", "category_name", "is_featured"]
+                  "rating", "rating_count", "stock", "category", "category_name", "is_featured",
+                  "seller", "seller_name"]
 
 
 class ProductDetailSerializer(ProductSerializer):
@@ -47,7 +49,7 @@ class HomeSectionSerializer(serializers.ModelSerializer):
         fields = ["id", "title", "products"]
 
     def get_products(self, obj):
-        qs = obj.products.filter(is_active=True)
+        qs = obj.products.visible().select_related("seller__profile")
         return ProductSerializer(qs, many=True, context=self.context).data
 
 
@@ -67,10 +69,13 @@ class AddressSerializer(serializers.ModelSerializer):
 
 class OrderItemSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
+    seller_name = serializers.CharField(read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
 
     class Meta:
         model = OrderItem
-        fields = ["id", "product", "product_name", "price", "quantity", "image"]
+        fields = ["id", "product", "product_name", "price", "quantity", "image", "seller", "seller_name",
+                  "status", "status_display"]
 
     def get_image(self, obj):
         if obj.product and obj.product.image:

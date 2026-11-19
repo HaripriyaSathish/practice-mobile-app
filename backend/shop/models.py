@@ -42,7 +42,21 @@ class Category(models.Model):
         return self.name
 
 
+HOUSE_STORE_NAME = "Vetri Shopping Hall"  # products with no seller are sold by the store itself
+
+
+class ProductQuerySet(models.QuerySet):
+    def visible(self):
+        """Products buyers may see: active, in an active category, sold by the store or an approved seller."""
+        return self.filter(is_active=True, category__is_active=True).filter(
+            models.Q(seller__isnull=True)
+            | models.Q(seller__is_active=True, seller__profile__role="seller", seller__profile__is_approved=True))
+
+
 class Product(models.Model):
+    seller = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, related_name="products",
+                               on_delete=models.SET_NULL, limit_choices_to={"profile__role": "seller"},
+                               help_text=f"Leave empty for products sold by {HOUSE_STORE_NAME} itself")
     category = models.ForeignKey(Category, related_name="products", on_delete=models.CASCADE)
     name = models.CharField(max_length=200)
     slug = models.SlugField(max_length=220, unique=True, blank=True)
@@ -58,8 +72,17 @@ class Product(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    objects = ProductQuerySet.as_manager()
+
     class Meta:
         ordering = ["-created_at"]
+
+    @property
+    def seller_name(self):
+        if self.seller_id:
+            profile = getattr(self.seller, "profile", None)
+            return (profile and profile.shop_name) or self.seller.username
+        return HOUSE_STORE_NAME
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -198,12 +221,26 @@ class Order(models.Model):
 
 
 class OrderItem(models.Model):
+    """One line of an order. In a multivendor order every line belongs to one seller, who updates its status."""
+    STATUS_FLOW = ["PLACED", "CONFIRMED", "SHIPPED", "DELIVERED"]
+
     order = models.ForeignKey(Order, related_name="items", on_delete=models.CASCADE)
     product = models.ForeignKey(Product, null=True, on_delete=models.SET_NULL)
+    seller = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, related_name="sold_items",
+                               on_delete=models.SET_NULL, help_text=f"Empty = sold by {HOUSE_STORE_NAME}")
     product_name = models.CharField(max_length=200)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     quantity = models.PositiveIntegerField(default=1)
+    status = models.CharField(max_length=20, choices=Order.STATUS_CHOICES, default="PLACED")
+    status_updated_at = models.DateTimeField(null=True, blank=True)
 
     @property
     def subtotal(self):
         return self.price * self.quantity
+
+    @property
+    def seller_name(self):
+        if self.seller_id:
+            profile = getattr(self.seller, "profile", None)
+            return (profile and profile.shop_name) or self.seller.username
+        return HOUSE_STORE_NAME

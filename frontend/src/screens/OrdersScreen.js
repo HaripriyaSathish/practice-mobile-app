@@ -176,6 +176,12 @@ export default function OrdersScreen({ route, navigation }) {
                     <Text style={styles.itemMeta}>
                       Qty {it.quantity} × {formatPrice(it.price)}
                     </Text>
+                    {it.seller_name ? (
+                      <Text style={styles.itemMeta}>
+                        Sold by {it.seller_name}
+                        {it.status && it.status !== o.status ? ` · ${it.status_display}` : ''}
+                      </Text>
+                    ) : null}
                   </View>
                 </View>
               ))}

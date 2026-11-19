@@ -21,9 +21,15 @@ services:
         sync: false
       - key: CASHFREE_SECRET_KEY
         sync: false
-      - key: EMAIL_HOST_USER
+      - key: CLOUDINARY_CLOUD_NAME
         sync: false
-      - key: EMAIL_HOST_PASSWORD
+      - key: CLOUDINARY_API_KEY
         sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false          # e.g. Vetri Shopping Hall <noreply@your-verified-domain.com>
       - key: SITE_URL
         sync: false          # e.g. https://practice-mobile-app.onrender.com/

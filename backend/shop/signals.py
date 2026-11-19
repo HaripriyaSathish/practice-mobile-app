@@ -7,16 +7,20 @@ from django.utils import timezone
 
 from .emails import send_status_update
 from .models import Order, Product
+from .multivendor import follow_order_status
 
 
 @receiver(post_save, sender=Order)
-def on_order_status_change(sender, instance, created, **kwargs):
-    """Runs for every status change - from the app, the admin edit page, list edit or bulk actions."""
+def on_order_status_change(sender, instance, created, raw=False, **kwargs):
+    """Runs for every status change - from the app, a seller, the admin edit page, list edit or bulk actions."""
+    if raw:  # loaddata
+        return
     old = instance._original_status
     instance._original_status = instance.status
     if created or instance.status == old:
         return
 
+    follow_order_status(instance)
     if instance.status == "CANCELLED":
         _handle_cancellation(instance)
 

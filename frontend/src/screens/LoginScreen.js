@@ -1,30 +1,36 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../api';
 import { FadeInUp, Pulse, SparkleField } from '../components/Animations';
+import { Field, FormError, RoleTabs } from '../components/AuthUI';
 import { Button } from '../components/common';
 import Logo from '../components/Logo';
 import Text from '../components/Text';
-import { colors, fonts } from '../theme';
+import { colors } from '../theme';
 
-export default function LoginScreen({ navigation }) {
+/** Step 1 of login: role + username/email + password. Step 2 (OtpScreen): the code emailed to them. */
+export default function LoginScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
-  const [email, setEmail] = useState('');
+  const [role, setRole] = useState(route.params?.role || 'buyer');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [focused, setFocused] = useState(false);
 
-  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const valid = username.trim().length >= 3 && password.length > 0;
 
-  const sendOtp = async () => {
+  const submit = async () => {
+    if (!valid || loading) return;
     setError('');
     setLoading(true);
     try {
-      const res = await api('/auth/send-otp/', { method: 'POST', body: { email: email.trim() } });
-      navigation.navigate('Otp', { email: email.trim().toLowerCase(), resendIn: res.resend_in });
+      const res = await api('/auth/login/', { method: 'POST', body: { role, username: username.trim(), password } });
+      // purpose is "login" normally, or "signup" when the email was never verified
+      navigation.navigate('Otp', { email: res.email, role, purpose: res.purpose, resendIn: res.resend_in, note: res.message });
+      setPassword('');
     } catch (e) {
       setError(e.message);
     } finally {
@@ -39,61 +45,83 @@ export default function LoginScreen({ navigation }) {
           colors={[colors.primaryDark, colors.primary, '#8A3355']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.hero, { paddingTop: insets.top + 56 }]}
+          style={[styles.hero, { paddingTop: insets.top + 36 }]}
         >
           <SparkleField count={14} seed={7} />
           <FadeInUp>
             <Pulse>
               <View style={styles.ringOuter}>
                 <View style={styles.ringInner}>
-                  <Ionicons name="bag-handle-outline" size={30} color={colors.accent} />
+                  <Ionicons name={role === 'seller' ? 'storefront-outline' : 'bag-handle-outline'} size={28} color={colors.accent} />
                 </View>
               </View>
             </Pulse>
           </FadeInUp>
-          <FadeInUp delay={150} style={{ marginTop: 22 }}>
-            <Logo size={28} align="center" />
+          <FadeInUp delay={150} style={{ marginTop: 18 }}>
+            <Logo size={26} align="center" />
           </FadeInUp>
           <FadeInUp delay={300}>
-            <Text style={styles.tag}>Fashion · Electronics · Home · Gifts</Text>
+            <Text style={styles.tag}>Many stores · One marketplace</Text>
           </FadeInUp>
         </LinearGradient>
 
         <FadeInUp delay={350} style={styles.form}>
           <Text display style={styles.title}>
-            Welcome
+            Welcome back
           </Text>
-          <Text style={styles.sub}>Sign in or create an account with your email. We'll send a one-time code - no password needed.</Text>
+          <Text style={styles.sub}>Login with your password. We'll then email you a one-time code.</Text>
 
-          <Text style={styles.label}>EMAIL ADDRESS</Text>
-          <View style={[styles.inputWrap, focused && styles.inputFocused, error && { borderColor: colors.danger }]}>
-            <Ionicons name="mail-outline" size={19} color={focused ? colors.primary : colors.muted} />
-            <TextInput
-              style={styles.input}
-              placeholder="you@example.com"
-              placeholderTextColor="#B5ADB0"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              value={email}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              onChangeText={(t) => {
-                setEmail(t);
-                setError('');
-              }}
-              onSubmitEditing={() => valid && sendOtp()}
-              returnKeyType="send"
-            />
+          <RoleTabs value={role} onChange={(r) => { setRole(r); setError(''); }} />
+
+          <Field
+            label={role === 'seller' ? 'SELLER USERNAME OR EMAIL' : 'USERNAME OR EMAIL'}
+            icon="person-outline"
+            placeholder="e.g. ravi or ravi@example.com"
+            value={username}
+            onChangeText={(t) => { setUsername(t); setError(''); }}
+            autoComplete="username"
+            returnKeyType="next"
+            style={{ marginTop: 20 }}
+          />
+          <Field
+            label="PASSWORD"
+            icon="lock-closed-outline"
+            secure
+            placeholder="Your password"
+            value={password}
+            onChangeText={(t) => { setPassword(t); setError(''); }}
+            autoComplete="current-password"
+            onSubmitEditing={submit}
+            returnKeyType="go"
+            style={{ marginTop: 14 }}
+          />
+          <Pressable onPress={() => navigation.navigate('ForgotPassword', { role })} hitSlop={8} style={styles.forgot}>
+            <Text style={styles.link}>Forgot password?</Text>
+          </Pressable>
+
+          <FormError message={error} />
+
+          <Button
+            title={role === 'seller' ? 'Login as Seller' : 'Login'}
+            variant="accent"
+            icon="arrow-forward"
+            onPress={submit}
+            loading={loading}
+            disabled={!valid}
+            style={{ marginTop: 18 }}
+          />
+
+          <View style={styles.switchRow}>
+            <Text style={styles.muted}>New to Vetri? </Text>
+            <Pressable onPress={() => navigation.navigate('Signup', { role })} hitSlop={8}>
+              <Text style={styles.link}>{role === 'seller' ? 'Open a seller account' : 'Create an account'}</Text>
+            </Pressable>
           </View>
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-
-          <Button title="Continue" variant="accent" icon="arrow-forward" onPress={sendOtp} loading={loading} disabled={!valid} style={{ marginTop: 22 }} />
 
           <View style={styles.perks}>
             {[
-              ['lock-closed-outline', 'Secure OTP login'],
-              ['car-outline', 'Free delivery'],
+              ['shield-checkmark-outline', 'Password + email OTP'],
+              ['storefront-outline', 'Trusted sellers'],
               ['refresh-outline', 'Easy returns'],
             ].map(([icon, label]) => (
               <View key={label} style={styles.perk}>
@@ -102,8 +130,6 @@ export default function LoginScreen({ navigation }) {
               </View>
             ))}
           </View>
-
-          <Text style={styles.terms}>By continuing, you agree to our Terms of Use and Privacy Policy.</Text>
         </FadeInUp>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -113,48 +139,36 @@ export default function LoginScreen({ navigation }) {
 const styles = StyleSheet.create({
   hero: {
     alignItems: 'center',
-    paddingBottom: 48,
+    paddingBottom: 34,
     borderBottomLeftRadius: 36,
     borderBottomRightRadius: 36,
   },
   ringOuter: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     borderWidth: 1,
     borderColor: 'rgba(201,163,92,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   ringInner: {
-    width: 66,
-    height: 66,
-    borderRadius: 33,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tag: { color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 14, letterSpacing: 0.6 },
-  form: { paddingHorizontal: 26, paddingTop: 30, paddingBottom: 24, flex: 1 },
-  title: { fontSize: 30, color: colors.ink },
-  sub: { fontSize: 14, color: colors.muted, marginTop: 8, lineHeight: 21 },
-  label: { fontSize: 10.5, color: colors.muted, fontWeight: '600', letterSpacing: 1.5, marginTop: 28, marginBottom: 8 },
-  inputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    height: 54,
-    gap: 10,
-    backgroundColor: '#FBF9F7',
-  },
-  inputFocused: { borderColor: colors.primary, backgroundColor: '#fff' },
-  input: { flex: 1, fontSize: 15.5, color: colors.ink, height: '100%', fontFamily: fonts.regular },
-  error: { color: colors.danger, marginTop: 8, fontSize: 13 },
-  perks: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 28 },
+  tag: { color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 12, letterSpacing: 0.6 },
+  form: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 28, flex: 1 },
+  title: { fontSize: 27, color: colors.ink },
+  sub: { fontSize: 13.5, color: colors.muted, marginTop: 4, marginBottom: 18, lineHeight: 20 },
+  forgot: { alignSelf: 'flex-end', marginTop: 10 },
+  link: { color: colors.primary, fontWeight: '600', fontSize: 13.5 },
+  muted: { color: colors.muted, fontSize: 13.5 },
+  switchRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20, flexWrap: 'wrap' },
+  perks: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 26 },
   perk: { alignItems: 'center', gap: 5, flex: 1 },
-  perkText: { fontSize: 11, color: colors.ink, fontWeight: '500' },
-  terms: { fontSize: 11.5, color: colors.muted, textAlign: 'center', marginTop: 26, lineHeight: 17 },
+  perkText: { fontSize: 10.5, color: colors.ink, fontWeight: '500', textAlign: 'center' },
 });

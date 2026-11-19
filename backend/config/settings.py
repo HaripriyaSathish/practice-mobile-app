@@ -58,25 +58,36 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 # ---------- Database ----------
-# DATABASE_URL (e.g. Neon PostgreSQL) wins; otherwise local MySQL from DB_* variables.
+# DB_TARGET picks the database explicitly: "sqlite" (throwaway tests), "mysql" (local MySQL Workbench)
+# or "neon" (DATABASE_URL). If DB_TARGET is not set: Neon when DATABASE_URL exists, otherwise MySQL.
+#   PowerShell:  $env:DB_TARGET="mysql"; python manage.py migrate
+DB_TARGET = os.getenv("DB_TARGET", "").lower() or (
+    "sqlite" if os.getenv("USE_SQLITE") == "1" else "neon" if os.getenv("DATABASE_URL") else "mysql")
+_MYSQL = {
+    "ENGINE": "django.db.backends.mysql",
+    "NAME": os.getenv("DB_NAME", "south_cart_db"),
+    "USER": os.getenv("DB_USER", "root"),
+    "PASSWORD": os.getenv("DB_PASSWORD", ""),
+    "HOST": os.getenv("DB_HOST", "127.0.0.1"),
+    "PORT": os.getenv("DB_PORT", "3306"),
+    "OPTIONS": {"charset": "utf8mb4"},
+}
 if os.getenv("DATABASE_URL"):
     import dj_database_url
 
-    DATABASES = {"default": dj_database_url.config(conn_max_age=600, ssl_require=True)}
-elif os.getenv("USE_SQLITE") == "1":  # only for quick local tests
+    _NEON = dj_database_url.config(conn_max_age=600, ssl_require=True)
+if DB_TARGET == "neon":
+    if not os.getenv("DATABASE_URL"):
+        raise RuntimeError("DB_TARGET=neon needs DATABASE_URL")
+    DATABASES = {"default": _NEON}
+elif DB_TARGET == "sqlite":  # only for quick local tests
     DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "test.sqlite3"}}
 else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.mysql",
-            "NAME": os.getenv("DB_NAME", "south_cart_db"),
-            "USER": os.getenv("DB_USER", "root"),
-            "PASSWORD": os.getenv("DB_PASSWORD", ""),
-            "HOST": os.getenv("DB_HOST", "127.0.0.1"),
-            "PORT": os.getenv("DB_PORT", "3306"),
-            "OPTIONS": {"charset": "utf8mb4"},
-        }
-    }
+    DATABASES = {"default": _MYSQL}
+# Extra connections used only by `python manage.py sync_databases` (on your PC, never on Render)
+if os.getenv("DATABASE_URL") and not os.getenv("RENDER") and DB_TARGET != "sqlite":
+    DATABASES["mysql"] = {**_MYSQL}
+    DATABASES["neon"] = {**_NEON, "CONN_MAX_AGE": 0}
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -90,10 +101,27 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# Product / banner images: Cloudinary when CLOUDINARY_URL is set (needed on Render - its disk is wiped on
+# every deploy), otherwise the local media/ folder.
+# Either CLOUDINARY_URL=cloudinary://key:secret@cloud  or the three CLOUDINARY_CLOUD_NAME/_API_KEY/_API_SECRET
+if not os.getenv("CLOUDINARY_URL") and all(
+        os.getenv(k) for k in ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET")):
+    os.environ["CLOUDINARY_URL"] = (f"cloudinary://{os.getenv('CLOUDINARY_API_KEY')}:"
+                                    f"{os.getenv('CLOUDINARY_API_SECRET')}@{os.getenv('CLOUDINARY_CLOUD_NAME')}")
+USE_CLOUDINARY = bool(os.getenv("CLOUDINARY_URL"))
+if USE_CLOUDINARY:
+    import cloudinary
+
+    cloudinary.reset_config()  # (re)read CLOUDINARY_URL
+    cloudinary.config(secure=True)
+CLOUDINARY_FOLDER = os.getenv("CLOUDINARY_FOLDER", "vetri")
 STORAGES = {
-    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "default": {"BACKEND": "config.storage.CloudinaryMediaStorage" if USE_CLOUDINARY
+                else "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
+DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024  # seller photo uploads
+FILE_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
 
 # Behind Render's HTTPS proxy
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
@@ -114,10 +142,16 @@ REST_FRAMEWORK = {
 }
 CORS_ALLOW_ALL_ORIGINS = True
 
-# ---------- Email (OTP) ----------
+# ---------- Email (OTP + order updates) ----------
+# 1) RESEND_API_KEY set -> Resend HTTPS API (works on Render)   2) Gmail SMTP   3) printed in the terminal
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-if EMAIL_HOST_USER:
+if RESEND_API_KEY:
+    EMAIL_BACKEND = "config.email_backend.ResendEmailBackend"
+    # must use a domain verified in Resend; onboarding@resend.dev only reaches the Resend account owner
+    DEFAULT_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "Vetri Shopping Hall <onboarding@resend.dev>")
+elif EMAIL_HOST_USER:
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
     EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
     EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))

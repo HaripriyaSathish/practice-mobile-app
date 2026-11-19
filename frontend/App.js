@@ -31,6 +31,13 @@ import ProductDetailScreen from './src/screens/ProductDetailScreen';
 import ProductListScreen from './src/screens/ProductListScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import WishlistScreen from './src/screens/WishlistScreen';
+import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
+import SignupScreen from './src/screens/SignupScreen';
+import SellerAccountScreen from './src/screens/seller/SellerAccountScreen';
+import SellerDashboardScreen from './src/screens/seller/SellerDashboardScreen';
+import SellerOrdersScreen from './src/screens/seller/SellerOrdersScreen';
+import SellerProductFormScreen from './src/screens/seller/SellerProductFormScreen';
+import SellerProductsScreen from './src/screens/seller/SellerProductsScreen';
 import { colors, fonts } from './src/theme';
 
 const Stack = createNativeStackNavigator();
@@ -45,6 +52,10 @@ const TAB_ICONS = {
   Wishlist: 'heart',
   Cart: 'cart',
   Account: 'person',
+  SellerHome: 'speedometer',
+  SellerProducts: 'pricetags',
+  SellerOrders: 'receipt',
+  SellerAccount: 'storefront',
 };
 
 /** Tab icon that bounces when it becomes active, with a gold dot underneath. */
@@ -109,8 +120,46 @@ function MainTabs() {
   );
 }
 
+/** Shared bottom-tab look for buyers and sellers. */
+function useTabOptions() {
+  const insets = useSafeAreaInsets();
+  return ({ route }) => ({
+    headerShown: false,
+    tabBarActiveTintColor: colors.primary,
+    tabBarInactiveTintColor: colors.muted,
+    tabBarLabelStyle: { fontSize: 10.5, fontFamily: fonts.medium, lineHeight: 14, letterSpacing: 0.2 },
+    tabBarStyle: {
+      height: 66 + insets.bottom,
+      paddingBottom: 6 + insets.bottom,
+      paddingTop: 7,
+      backgroundColor: '#fff',
+      borderTopColor: colors.border,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      elevation: 0,
+    },
+    tabBarIcon: ({ focused, color }) => <TabIcon name={TAB_ICONS[route.name]} focused={focused} color={color} />,
+  });
+}
+
+function SellerTabs() {
+  const { user } = useApp();
+  const screenOptions = useTabOptions();
+  return (
+    <Tab.Navigator screenOptions={screenOptions}>
+      <Tab.Screen name="SellerHome" component={SellerDashboardScreen} options={{ title: 'Dashboard' }} />
+      {user?.is_approved && (
+        <>
+          <Tab.Screen name="SellerProducts" component={SellerProductsScreen} options={{ title: 'Products' }} />
+          <Tab.Screen name="SellerOrders" component={SellerOrdersScreen} options={{ title: 'Orders' }} />
+        </>
+      )}
+      <Tab.Screen name="SellerAccount" component={SellerAccountScreen} options={{ title: 'My Shop' }} />
+    </Tab.Navigator>
+  );
+}
+
 function RootNavigator() {
-  const { booting, token } = useApp();
+  const { booting, token, isSeller } = useApp();
 
   if (booting) {
     return (
@@ -126,7 +175,12 @@ function RootNavigator() {
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false, animation: Platform.OS === 'web' ? 'none' : 'slide_from_right' }}>
-      {token ? (
+      {token && isSeller ? (
+        <>
+          <Stack.Screen name="SellerMain" component={SellerTabs} />
+          <Stack.Screen name="SellerProductForm" component={SellerProductFormScreen} />
+        </>
+      ) : token ? (
         <>
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="ProductList" component={ProductListScreen} />
@@ -139,7 +193,9 @@ function RootNavigator() {
       ) : (
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="Signup" component={SignupScreen} />
           <Stack.Screen name="Otp" component={OtpScreen} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         </>
       )}
     </Stack.Navigator>

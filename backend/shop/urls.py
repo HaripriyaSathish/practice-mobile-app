@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import seller_views, views
 
 urlpatterns = [
     path("home/", views.home),
@@ -14,4 +14,10 @@ urlpatterns = [
     path("orders/<int:pk>/cancel/", views.cancel_order),
     path("orders/<int:pk>/pay/", views.pay_order),
     path("orders/<int:pk>/verify-payment/", views.verify_payment),
+    # ---- seller dashboard ----
+    path("seller/dashboard/", seller_views.dashboard),
+    path("seller/products/", seller_views.products),
+    path("seller/products/<int:pk>/", seller_views.product_detail),
+    path("seller/orders/", seller_views.orders),
+    path("seller/order-items/<int:pk>/status/", seller_views.update_item_status),
 ]

@@ -8,6 +8,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from accounts.permissions import IsBuyer
+
 from . import payments
 from .emails import invoice_context, order_from_token, send_order_confirmation
 from .models import (Address, Banner, CartItem, Category, HomeSection, Order,
@@ -25,7 +27,7 @@ def home(request):
     return Response({
         "banners": BannerSerializer(Banner.objects.filter(is_active=True), many=True, context=ctx).data,
         "categories": CategorySerializer(Category.objects.filter(is_active=True), many=True, context=ctx).data,
-        "deals": ProductSerializer(Product.objects.filter(is_active=True, is_featured=True)[:10],
+        "deals": ProductSerializer(Product.objects.visible().filter(is_featured=True).select_related("seller__profile")[:10],
                                    many=True, context=ctx).data,
         "sections": HomeSectionSerializer(HomeSection.objects.filter(is_active=True), many=True, context=ctx).data,
     })
@@ -40,9 +42,11 @@ def categories(request):
 @api_view(["GET"])
 def products(request):
     """GET /api/products/?category=<id>&search=<text>&sort=price_low|price_high|rating"""
-    qs = Product.objects.filter(is_active=True, category__is_active=True).select_related("category")
+    qs = Product.objects.visible().select_related("category", "seller__profile")
     if cat := request.GET.get("category"):
         qs = qs.filter(category_id=cat)
+    if seller := request.GET.get("seller"):
+        qs = qs.filter(seller_id=seller)
     if q := request.GET.get("search"):
         qs = qs.filter(Q(name__icontains=q) | Q(brand__icontains=q) | Q(category__name__icontains=q))
     sort = request.GET.get("sort")
@@ -57,11 +61,11 @@ def products(request):
 
 @api_view(["GET"])
 def product_detail(request, pk):
-    product = get_object_or_404(Product, pk=pk, is_active=True)
+    product = get_object_or_404(Product.objects.visible().select_related("seller__profile"), pk=pk)
     data = ProductDetailSerializer(product, context={"request": request}).data
     data["in_wishlist"] = (request.user.is_authenticated and
                            WishlistItem.objects.filter(user=request.user, product=product).exists())
-    similar = Product.objects.filter(category=product.category, is_active=True).exclude(pk=pk)[:8]
+    similar = Product.objects.visible().filter(category=product.category).exclude(pk=pk)[:8]
     data["similar"] = ProductSerializer(similar, many=True, context={"request": request}).data
     return Response(data)
 
@@ -81,12 +85,12 @@ def _cart_response(request):
 
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsBuyer])
 def cart(request):
     """GET: view cart.
     POST {product_id, quantity, mode}: mode "add" adds to existing qty, "set" sets it. qty 0 removes."""
     if request.method == "POST":
-        product = get_object_or_404(Product, pk=request.data.get("product_id"), is_active=True)
+        product = get_object_or_404(Product.objects.visible(), pk=request.data.get("product_id"))
         qty = int(request.data.get("quantity", 1))
         mode = request.data.get("mode", "add")
         item = CartItem.objects.filter(user=request.user, product=product).first()
@@ -108,22 +112,22 @@ def cart(request):
 
 # ---------------- Wishlist ----------------
 @api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsBuyer])
 def wishlist(request):
     """GET: list.  POST {product_id}: toggle."""
     if request.method == "POST":
-        product = get_object_or_404(Product, pk=request.data.get("product_id"))
+        product = get_object_or_404(Product.objects.visible(), pk=request.data.get("product_id"))
         obj, created = WishlistItem.objects.get_or_create(user=request.user, product=product)
         if not created:
             obj.delete()
         return Response({"in_wishlist": created})
-    qs = Product.objects.filter(wishlistitem__user=request.user, is_active=True).select_related("category")
+    qs = Product.objects.visible().filter(wishlistitem__user=request.user).select_related("category", "seller__profile")
     return Response(ProductSerializer(qs, many=True, context={"request": request}).data)
 
 
 # ---------------- Addresses ----------------
 @api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsBuyer])
 def addresses(request):
     if request.method == "POST":
         ser = AddressSerializer(data=request.data)
@@ -135,11 +139,11 @@ def addresses(request):
 
 # ---------------- Orders ----------------
 @api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsBuyer])
 def orders(request):
     """GET: my orders.  POST {address_id, payment_method}: place order from cart."""
     if request.method == "GET":
-        qs = Order.objects.filter(user=request.user).prefetch_related("items__product")
+        qs = Order.objects.filter(user=request.user).prefetch_related("items__product", "items__seller__profile")
         return Response(OrderSerializer(qs, many=True, context={"request": request}).data)
 
     payment_method = request.data.get("payment_method", "COD")
@@ -153,6 +157,12 @@ def orders(request):
     cart_items = list(CartItem.objects.filter(user=request.user).select_related("product"))
     if not cart_items:
         return Response({"detail": "Your cart is empty."}, status=400)
+    visible = set(Product.objects.visible().filter(pk__in=[ci.product_id for ci in cart_items])
+                  .values_list("pk", flat=True))
+    for ci in cart_items:
+        if ci.product_id not in visible:
+            return Response({"detail": f"{ci.product.name} is no longer available. Please remove it from your cart."},
+                            status=400)
     for ci in cart_items:
         if ci.product.stock < ci.quantity:
             return Response({"detail": f"Only {ci.product.stock} left for {ci.product.name}."}, status=400)
@@ -168,8 +178,9 @@ def orders(request):
             total_amount=sum(ci.product.price * ci.quantity for ci in cart_items),
         )
         for ci in cart_items:
-            OrderItem.objects.create(order=order, product=ci.product, product_name=ci.product.name,
-                                     price=ci.product.price, quantity=ci.quantity)
+            OrderItem.objects.create(order=order, product=ci.product, seller_id=ci.product.seller_id,
+                                     product_name=ci.product.name, price=ci.product.price,
+                                     quantity=ci.quantity)
             ci.product.stock -= ci.quantity
             ci.product.save(update_fields=["stock"])
         CartItem.objects.filter(user=request.user).delete()
@@ -187,7 +198,7 @@ def orders(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsBuyer])
 def pay_order(request, pk):
     """Start (or retry) Cashfree payment for an unpaid online order."""
     order = get_object_or_404(Order, pk=pk, user=request.user)
@@ -201,7 +212,7 @@ def pay_order(request, pk):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsBuyer])
 def verify_payment(request, pk):
     """Ask Cashfree for the latest payment status of my order."""
     order = get_object_or_404(Order, pk=pk, user=request.user)
@@ -222,12 +233,13 @@ def invoice_view(request, token):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsBuyer])
 def cancel_order(request, pk):
-    order = get_object_or_404(Order, pk=pk, user=request.user)
     """POST {reason}: cancel my order. Stock is restored, paid online orders are refunded
     and the customer is emailed (see shop/signals.py)."""
-    if order.status not in ("PLACED", "CONFIRMED"):
+    order = get_object_or_404(Order, pk=pk, user=request.user)
+    shipped = order.items.filter(status__in=("SHIPPED", "DELIVERED")).exists()
+    if order.status not in ("PLACED", "CONFIRMED") or shipped:
         return Response({"detail": "This order has already been shipped and can no longer be cancelled."},
                         status=400)
     order.cancel_reason = (request.data.get("reason") or "Cancelled by customer")[:200]

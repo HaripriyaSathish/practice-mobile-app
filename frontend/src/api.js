@@ -23,8 +23,23 @@ export async function saveToken(token) {
   }
 }
 
-/** Small fetch wrapper: adds the auth token and turns API errors into readable messages. */
-export async function api(path, { method = 'GET', body } = {}) {
+/**
+ * Add a picked photo (from expo-image-picker) to FormData.
+ * Web gives a real File object; Android/iOS need the {uri, name, type} form.
+ */
+export function appendImage(form, field, asset) {
+  if (asset.file) {
+    form.append(field, asset.file, asset.file.name || asset.fileName || 'photo.jpg');
+    return;
+  }
+  const type = asset.mimeType || 'image/jpeg';
+  const ext = type.split('/')[1] || 'jpg';
+  form.append(field, { uri: asset.uri, name: asset.fileName || `photo.${ext}`, type });
+}
+
+/** Small fetch wrapper: adds the auth token and turns API errors into readable messages.
+ *  `body` is sent as JSON; `form` (FormData) is sent as multipart for photo uploads. */
+export async function api(path, { method = 'GET', body, form } = {}) {
   const headers = { Accept: 'application/json' };
   if (body) headers['Content-Type'] = 'application/json';
   if (authToken) headers.Authorization = `Token ${authToken}`;
@@ -34,17 +49,19 @@ export async function api(path, { method = 'GET', body } = {}) {
     res = await fetch(`${API_URL}/api${path}`, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined,
+      body: form || (body ? JSON.stringify(body) : undefined),
     });
   } catch {
     throw new Error(`Cannot reach the server at ${API_URL}. Is the Django backend running?`);
   }
 
   let data = null;
-  try {
-    data = await res.json();
-  } catch {
-    data = null;
+  if (res.status !== 204) {
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
   }
   if (!res.ok) {
     const message =

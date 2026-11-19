@@ -11,7 +11,7 @@ import { colors } from '../theme';
 const LENGTH = 6;
 
 export default function OtpScreen({ route, navigation }) {
-  const { email } = route.params;
+  const { email, role = 'buyer', purpose = 'login', note } = route.params;
   const insets = useSafeAreaInsets();
   const { login } = useApp();
   const inputRef = useRef(null);
@@ -32,7 +32,8 @@ export default function OtpScreen({ route, navigation }) {
     setError('');
     setLoading(true);
     try {
-      const res = await api('/auth/verify-otp/', { method: 'POST', body: { email, otp: value } });
+      const path = purpose === 'signup' ? '/auth/verify-signup/' : '/auth/verify-login/';
+      const res = await api(path, { method: 'POST', body: { email, role, otp: value } });
       await login(res.token, res.user); // navigator switches to the shop automatically
     } catch (e) {
       setError(e.message);
@@ -45,7 +46,7 @@ export default function OtpScreen({ route, navigation }) {
     setError('');
     setInfo('');
     try {
-      const res = await api('/auth/send-otp/', { method: 'POST', body: { email } });
+      const res = await api('/auth/resend-otp/', { method: 'POST', body: { email, role, purpose } });
       setSeconds(res.resend_in || 30);
       setInfo('A new OTP has been sent.');
     } catch (e) {
@@ -69,11 +70,16 @@ export default function OtpScreen({ route, navigation }) {
       <View style={styles.iconCircle}>
         <Ionicons name="mail-open-outline" size={34} color={colors.primary} />
       </View>
-      <Text style={styles.title}>Verify your email</Text>
+      <Text style={styles.title}>{purpose === 'signup' ? 'Verify your email' : 'Enter login code'}</Text>
       <Text style={styles.sub}>
-        Enter the 6-digit code sent to{'\n'}
+        {purpose === 'signup' ? 'To activate your account, enter' : 'For your security, enter'} the 6-digit code sent to{'\n'}
         <Text style={{ fontWeight: '700', color: colors.text }}>{email}</Text>
       </Text>
+      <View style={styles.rolePill}>
+        <Ionicons name={role === 'seller' ? 'storefront-outline' : 'bag-handle-outline'} size={13} color={colors.primary} />
+        <Text style={styles.rolePillText}>{role === 'seller' ? 'Seller account' : 'Buyer account'}</Text>
+      </View>
+      {note ? <Text style={styles.info}>{note}</Text> : null}
 
       <Pressable style={styles.boxes} onPress={() => inputRef.current?.focus()}>
         {Array.from({ length: LENGTH }).map((_, i) => {
@@ -124,8 +130,8 @@ export default function OtpScreen({ route, navigation }) {
         <View style={styles.devTip}>
           <Ionicons name="information-circle-outline" size={16} color="#7a5a2a" />
           <Text style={styles.devTipText}>
-            Practice tip: if Gmail SMTP is not set in backend/.env, the OTP is printed in the Django terminal and
-            visible in Admin → Email OTPs.
+            Practice tip: every code is also visible in Django Admin → Email OTPs. Not getting emails? Check the spam
+            folder and RESEND_FROM_EMAIL in backend/.env.
           </Text>
         </View>
       )}
@@ -164,7 +170,18 @@ const styles = StyleSheet.create({
   hiddenInput: {
     fontFamily: 'Poppins_400Regular', position: 'absolute', width: '100%', height: '100%', opacity: 0, color: 'transparent' },
   error: { color: colors.danger, marginTop: 12, fontSize: 13, textAlign: 'center' },
-  info: { color: colors.green, marginTop: 12, fontSize: 13 },
+  info: { color: colors.green, marginTop: 12, fontSize: 13, textAlign: 'center' },
+  rolePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.accentSoft,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 10,
+  },
+  rolePillText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
   resendRow: { flexDirection: 'row', marginTop: 18, alignItems: 'center' },
   muted: { color: colors.muted, fontSize: 14 },
   link: { color: colors.primary, fontWeight: '700', fontSize: 14 },

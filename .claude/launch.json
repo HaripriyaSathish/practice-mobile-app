@@ -4,17 +4,66 @@
     {
       "name": "backend",
       "runtimeExecutable": "C:\\practice mobile app\\backend\\venv\\Scripts\\python.exe",
-      "runtimeArgs": ["C:\\practice mobile app\\backend\\manage.py", "runserver", "0.0.0.0:8001"],
+      "runtimeArgs": [
+        "C:\\practice mobile app\\backend\\manage.py",
+        "runserver",
+        "0.0.0.0:8001"
+      ],
       "port": 8001,
+      "autoPort": false
+    },
+    {
+      "name": "backend-test",
+      "runtimeExecutable": "C:\\practice mobile app\\backend\\venv\\Scripts\\python.exe",
+      "runtimeArgs": [
+        "C:\\practice mobile app\\backend\\manage.py",
+        "runserver",
+        "0.0.0.0:8011",
+        "--noreload"
+      ],
+      "env": {
+        "DB_TARGET": "sqlite",
+        "CLOUDINARY_FOLDER": "vetri",
+        "RESEND_API_KEY": "",
+        "EMAIL_HOST_USER": ""
+      },
+      "port": 8011,
       "autoPort": false
     },
     {
       "name": "frontend-web",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["expo", "start", "--web", "--port", "8082"],
+      "runtimeArgs": [
+        "expo",
+        "start",
+        "--web",
+        "--port",
+        "8082"
+      ],
       "cwd": "C:\\practice mobile app\\frontend",
-      "env": { "EXPO_PUBLIC_API_PORT": "8001", "BROWSER": "none" },
+      "env": {
+        "EXPO_PUBLIC_API_PORT": "8001",
+        "BROWSER": "none"
+      },
       "port": 8082,
+      "autoPort": false
+    },
+    {
+      "name": "frontend-test",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "expo",
+        "start",
+        "--web",
+        "--port",
+        "8083"
+      ],
+      "cwd": "C:\\practice mobile app\\frontend",
+      "env": {
+        "EXPO_PUBLIC_API_PORT": "8011",
+        "BROWSER": "none"
+      },
+      "port": 8083,
       "autoPort": false
     }
   ]

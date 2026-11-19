@@ -138,6 +138,19 @@ export default function ProductDetailScreen({ route, navigation }) {
           <Text style={[styles.stock, { color: outOfStock ? colors.danger : product.stock <= 5 ? '#E65100' : colors.green }]}>
             {outOfStock ? 'Out of stock' : product.stock <= 5 ? `Hurry, only ${product.stock} left!` : 'In stock'}
           </Text>
+          {product.seller_name ? (
+            <Pressable
+              style={styles.soldBy}
+              disabled={!product.seller}
+              onPress={() => navigation.navigate('ProductList', { seller: product.seller, title: product.seller_name })}
+            >
+              <Ionicons name="storefront-outline" size={15} color={colors.primary} />
+              <Text style={styles.soldByText}>
+                Sold by <Text style={{ color: colors.primary, fontWeight: '600' }}>{product.seller_name}</Text>
+              </Text>
+              {product.seller ? <Ionicons name="chevron-forward" size={14} color={colors.primary} /> : null}
+            </Pressable>
+          ) : null}
         </View>
 
         <View style={styles.card}>
@@ -222,6 +235,18 @@ const styles = StyleSheet.create({
   dotActive: { backgroundColor: colors.primary, width: 16 },
   card: { backgroundColor: '#fff', marginTop: 10, padding: 16 },
   brand: { color: colors.accent, fontWeight: '600', fontSize: 11, letterSpacing: 1.5 },
+  soldBy: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    backgroundColor: colors.accentSoft,
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  soldByText: { fontSize: 12.5, color: colors.ink },
   name: { fontSize: 23, color: colors.ink, marginTop: 4, lineHeight: 30 },
   save: { color: colors.green, fontWeight: '700', marginTop: 6, fontSize: 13 },
   stock: { marginTop: 6, fontWeight: '700', fontSize: 13 },

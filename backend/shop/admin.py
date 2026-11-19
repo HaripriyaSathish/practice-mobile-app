@@ -89,19 +89,21 @@ class ProductImageInline(admin.TabularInline):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ("preview", "name", "category", "price", "mrp", "discount", "stock_status",
+    list_display = ("preview", "name", "seller_label", "category", "price", "mrp", "discount", "stock_status",
                     "stock", "is_featured", "is_active")
     list_display_links = ("preview", "name")
     list_editable = ("price", "stock", "is_featured", "is_active")
-    list_filter = ("category", "is_featured", "is_active")
-    search_fields = ("name", "brand", "description")
+    list_filter = ("category", "is_featured", "is_active", ("seller", admin.RelatedOnlyFieldListFilter))
+    search_fields = ("name", "brand", "description", "seller__profile__shop_name", "seller__username")
+    autocomplete_fields = ()
+    list_select_related = ("category", "seller__profile")
     prepopulated_fields = {"slug": ("name",)}
     list_per_page = 25
     readonly_fields = ("large_preview", "created_at")
     inlines = [ProductImageInline]
     actions = [make_active, make_inactive, "mark_featured", "unmark_featured"]
     fieldsets = (
-        ("Basic details", {"fields": ("name", "slug", "category", "brand", "description")}),
+        ("Basic details", {"fields": ("name", "slug", "seller", "category", "brand", "description")}),
         ("Price (MRP is the original price shown with a strike-through)", {"fields": ("price", "mrp")}),
         ("Main image", {"fields": ("image", "large_preview")}),
         ("Stock & rating", {"fields": ("stock", "rating", "rating_count")}),
@@ -111,6 +113,10 @@ class ProductAdmin(admin.ModelAdmin):
     @admin.display(description="Image")
     def preview(self, obj):
         return thumb(obj.image, 55)
+
+    @admin.display(description="Sold by", ordering="seller__profile__shop_name")
+    def seller_label(self, obj):
+        return obj.seller_name
 
     @admin.display(description="Current image")
     def large_preview(self, obj):
@@ -163,8 +169,8 @@ class OrderItemInline(admin.TabularInline):
     model = OrderItem
     extra = 0
     can_delete = False
-    fields = ("product_name", "price", "quantity", "line_total")
-    readonly_fields = fields
+    fields = ("product_name", "seller_name", "price", "quantity", "line_total", "status")
+    readonly_fields = ("product_name", "seller_name", "price", "quantity", "line_total")
 
     def line_total(self, obj):
         return f"Rs. {obj.subtotal}"
@@ -208,6 +214,12 @@ class OrderAdmin(admin.ModelAdmin):
          {"fields": ("cancel_reason", "cancelled_at", "refund_status", "refund_id"), "classes": ("collapse",)}),
         ("Delivery address", {"fields": ("full_name", "phone", "address")}),
     )
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        from .models import Order as _Order
+        from .multivendor import sync_order_status
+        sync_order_status(_Order.objects.get(pk=form.instance.pk))  # item status edits update the order
 
     @admin.display(description="Payment")
     def payment_badge(self, obj):

@@ -72,12 +72,16 @@ export function AppProvider({ children }) {
     })();
   }, []);
 
+  const role = user?.role || 'buyer';
+  const isSeller = role === 'seller';
+
+  // cart / addresses only exist for buyer accounts
   useEffect(() => {
-    if (token) {
+    if (token && !isSeller) {
       refreshCart();
       refreshAddresses();
     }
-  }, [token, refreshCart, refreshAddresses]);
+  }, [token, isSeller, refreshCart, refreshAddresses]);
 
   const login = async (newToken, newUser) => {
     await saveToken(newToken);
@@ -109,7 +113,7 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider
       value={{
-        booting, token, user, setUser, login, logout, cart, refreshCart, updateCart,
+        booting, token, user, setUser, role, isSeller, login, logout, cart, refreshCart, updateCart,
         addresses, refreshAddresses, deliveryAddress, chooseDelivery,
       }}
     >

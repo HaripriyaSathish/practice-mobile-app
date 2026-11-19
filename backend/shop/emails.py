@@ -66,6 +66,24 @@ def send_order_confirmation(order, base_url):
     ctx["is_email"] = True
     html = render_to_string("shop/invoice.html", ctx)
     _send(f"Order #{order.id} confirmed - Invoice {order.invoice_number} | Vetri Shopping Hall", html, order.user.email)
+    send_seller_new_order(order)
+
+
+def send_seller_new_order(order):
+    """Tell every seller in the order which of their products were bought."""
+    from django.utils.html import escape
+
+    by_seller = {}
+    for item in order.items.select_related("seller").exclude(seller=None):
+        by_seller.setdefault(item.seller, []).append(item)
+    for seller, items in by_seller.items():
+        if not seller.email:
+            continue
+        rows = "".join(f"<li>{escape(i.product_name)} &times; {i.quantity} - Rs. {i.subtotal}</li>" for i in items)
+        html = (f"<h2>New order #{order.id}</h2><p>You have a new order on Vetri Shopping Hall:</p><ul>{rows}</ul>"
+                f"<p>Ship to: {escape(order.full_name)}, {escape(order.address)} ({escape(order.phone)})</p>"
+                "<p>Open the Vetri app &rarr; Seller &rarr; Orders to confirm and ship it.</p>")
+        _send(f"New order #{order.id} | Vetri Shopping Hall Seller", html, seller.email)
 
 
 def send_status_update(order, base_url=""):
