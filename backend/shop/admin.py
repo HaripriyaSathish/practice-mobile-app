@@ -2,7 +2,7 @@ from django.contrib import admin, messages
 from django.utils.html import format_html
 
 from .models import (Address, Banner, CartItem, Category, HomeSection, Order,
-                     OrderItem, Product, ProductImage, WishlistItem)
+                     OrderItem, Product, ProductImage, Quote, WholesaleTier, WishlistItem)
 
 
 def thumb(image, size=60):
@@ -75,6 +75,13 @@ class CategoryAdmin(admin.ModelAdmin):
 
 
 # ---------- Products ----------
+class WholesaleTierInline(admin.TabularInline):
+    model = WholesaleTier
+    extra = 1
+    verbose_name = "Wholesale price slab"
+    verbose_name_plural = "Wholesale price slabs (B2B - only when 'Sell wholesale' is ticked)"
+
+
 class ProductImageInline(admin.TabularInline):
     model = ProductImage
     extra = 1
@@ -90,20 +97,25 @@ class ProductImageInline(admin.TabularInline):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     list_display = ("preview", "name", "seller_label", "category", "price", "mrp", "discount", "stock_status",
-                    "stock", "is_featured", "is_active")
+                    "stock", "condition", "review_badge", "is_wholesale", "is_featured", "is_active")
     list_display_links = ("preview", "name")
     list_editable = ("price", "stock", "is_featured", "is_active")
-    list_filter = ("category", "is_featured", "is_active", ("seller", admin.RelatedOnlyFieldListFilter))
+    list_filter = ("review_status", "condition", "is_wholesale", "category", "is_featured", "is_active",
+                   ("seller", admin.RelatedOnlyFieldListFilter))
     search_fields = ("name", "brand", "description", "seller__profile__shop_name", "seller__username")
     autocomplete_fields = ()
     list_select_related = ("category", "seller__profile")
     prepopulated_fields = {"slug": ("name",)}
     list_per_page = 25
     readonly_fields = ("large_preview", "created_at")
-    inlines = [ProductImageInline]
-    actions = [make_active, make_inactive, "mark_featured", "unmark_featured"]
+    inlines = [WholesaleTierInline, ProductImageInline]
+    actions = ["approve_listings", "reject_listings", make_active, make_inactive, "mark_featured",
+               "unmark_featured"]
     fieldsets = (
-        ("Basic details", {"fields": ("name", "slug", "seller", "category", "brand", "description")}),
+        ("Basic details", {"fields": ("name", "slug", "seller", "category", "brand", "description", "condition")}),
+        ("Resale review (buyers re-selling a Vetri purchase)",
+         {"fields": ("resale_of", "review_status", "review_note"), "classes": ("collapse",)}),
+        ("GST & wholesale (B2B)", {"fields": ("gst_rate", "hsn_code", "is_wholesale", "moq")}),
         ("Price (MRP is the original price shown with a strike-through)", {"fields": ("price", "mrp")}),
         ("Main image", {"fields": ("image", "large_preview")}),
         ("Stock & rating", {"fields": ("stock", "rating", "rating_count")}),
@@ -117,6 +129,32 @@ class ProductAdmin(admin.ModelAdmin):
     @admin.display(description="Sold by", ordering="seller__profile__shop_name")
     def seller_label(self, obj):
         return obj.seller_name
+
+    @admin.display(description="Review", ordering="review_status")
+    def review_badge(self, obj):
+        color = {"approved": "#28a745", "pending": "#f0ad4e", "rejected": "#dc3545"}[obj.review_status]
+        return format_html('<span style="background:{};color:#fff;padding:2px 9px;border-radius:10px;'
+                           'font-size:11px">{}</span>', color, obj.get_review_status_display())
+
+    @admin.action(description="Approve selected resale listings (show to buyers)")
+    def approve_listings(self, request, queryset):
+        from .emails import _send
+        n = 0
+        for p in queryset.exclude(review_status="approved"):
+            p.review_status, p.review_note = "approved", ""
+            p.save(update_fields=["review_status", "review_note"])
+            n += 1
+            if p.seller and p.seller.email:
+                _send(f"Your resale listing is live: {p.name} | Vetri Shopping Hall",
+                      f"<p>Good news! Your listing <b>{p.name}</b> is approved and buyers can see it now.</p>",
+                      p.seller.email)
+        self.message_user(request, f"{n} listing(s) approved and live.", messages.SUCCESS)
+
+    @admin.action(description="Reject selected resale listings")
+    def reject_listings(self, request, queryset):
+        n = queryset.update(review_status="rejected",
+                            review_note="Please add clear photos of the actual item and a fair price.")
+        self.message_user(request, f"{n} listing(s) rejected.", messages.WARNING)
 
     @admin.display(description="Current image")
     def large_preview(self, obj):
@@ -169,8 +207,10 @@ class OrderItemInline(admin.TabularInline):
     model = OrderItem
     extra = 0
     can_delete = False
-    fields = ("product_name", "seller_name", "price", "quantity", "line_total", "status")
-    readonly_fields = ("product_name", "seller_name", "price", "quantity", "line_total")
+    fields = ("product_name", "seller_name", "price_type", "condition", "price", "quantity", "gst_rate",
+              "line_total", "status")
+    readonly_fields = ("product_name", "seller_name", "price_type", "condition", "price", "quantity", "gst_rate",
+                       "line_total")
 
     def line_total(self, obj):
         return f"Rs. {obj.subtotal}"
@@ -212,7 +252,8 @@ class OrderAdmin(admin.ModelAdmin):
         ("Payment", {"fields": ("payment_method", "payment_status", "cf_order_id", "cf_payment_id", "paid_at")}),
         ("Cancellation & refund (set status to Cancelled: stock is restored and paid orders are refunded)",
          {"fields": ("cancel_reason", "cancelled_at", "refund_status", "refund_id"), "classes": ("collapse",)}),
-        ("Delivery address", {"fields": ("full_name", "phone", "address")}),
+        ("Delivery address", {"fields": ("full_name", "phone", "address", "ship_state")}),
+        ("Business buyer (B2B GST invoice)", {"fields": ("buyer_company", "buyer_gstin")}),
     )
 
     def save_related(self, request, form, formsets, change):
@@ -267,3 +308,30 @@ class CartItemAdmin(admin.ModelAdmin):
 class WishlistItemAdmin(admin.ModelAdmin):
     list_display = ("user", "product", "added_at")
     search_fields = ("user__email", "product__name")
+
+
+# ---------- B2B quotes ----------
+@admin.register(Quote)
+class QuoteAdmin(admin.ModelAdmin):
+    """Quotes for products sold by the store itself (no seller) are answered here: fill the offered price."""
+    list_display = ("id", "product", "buyer", "seller_label", "quantity", "status", "quoted_price", "valid_until",
+                    "created_at")
+    list_filter = ("status", ("seller", admin.RelatedOnlyFieldListFilter))
+    search_fields = ("product__name", "buyer__email", "buyer__profile__company_name")
+    readonly_fields = ("buyer", "product", "seller", "quantity", "note", "created_at", "valid_until")
+    fields = ("buyer", "product", "seller", "quantity", "note", "status", "quoted_price", "seller_note",
+              "valid_until", "created_at")
+
+    @admin.display(description="Seller")
+    def seller_label(self, obj):
+        return obj.product.seller_name
+
+    def save_model(self, request, obj, form, change):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        if obj.quoted_price and obj.status == "REQUESTED":
+            obj.status = "QUOTED"
+        if obj.status == "QUOTED" and "quoted_price" in form.changed_data:
+            obj.valid_until = timezone.now() + timedelta(days=Quote.VALID_DAYS)
+        super().save_model(request, obj, form, change)

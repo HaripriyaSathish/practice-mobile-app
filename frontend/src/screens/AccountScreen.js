@@ -56,8 +56,28 @@ export default function AccountScreen({ navigation }) {
           ))}
         </View>
 
+        {user?.is_business ? (
+          <View style={[styles.bizCard, { borderColor: user.is_approved_business ? colors.green : colors.accent }]}>
+            <Ionicons name="business" size={22} color={user.is_approved_business ? colors.green : '#8a5a00'} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.itemLabel}>{user.company_name}</Text>
+              <Text style={styles.itemSub}>
+                GSTIN {user.gstin} · {user.is_approved_business ? 'Verified business - wholesale prices on' : 'Waiting for GSTIN check'}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.menu}>
-          <MenuItem icon="receipt-outline" label="My Orders" sub="Track, cancel, invoices & payments" onPress={() => navigation.navigate('Orders')} />
+          <MenuItem icon="receipt-outline" label="My Orders" sub="Track, cancel, invoices, resell delivered items" onPress={() => navigation.navigate('Orders')} />
+          {user?.is_business && (
+            <MenuItem icon="chatbox-ellipses-outline" label="My Quotes (B2B)" sub="Bulk price requests and offers" onPress={() => navigation.navigate('Quotes')} />
+          )}
+          {user?.is_approved_business && (
+            <MenuItem icon="pricetags-outline" label="Wholesale products" sub="Products with business prices" onPress={() => navigation.navigate('ProductList', { wholesale: 1, title: 'Wholesale (B2B)' })} />
+          )}
+          <MenuItem icon="leaf-outline" label="My Resale" sub="Things you are reselling + orders to ship" onPress={() => navigation.navigate('MyResale')} />
+          <MenuItem icon="sparkles-outline" label="Pre-loved items" sub="Shop used & resale products" onPress={() => navigation.navigate('ProductList', { condition: 'used', title: 'Pre-loved · Resale' })} />
           <MenuItem icon="person-outline" label="Edit Profile" sub="Name and phone number" onPress={() => navigation.navigate('Profile')} />
           <MenuItem icon="heart-outline" label="My Wishlist" sub="Your saved products" onPress={() => navigation.navigate('Wishlist')} />
         </View>
@@ -96,6 +116,7 @@ const styles = StyleSheet.create({
   quickItem: { flex: 1, alignItems: 'center', gap: 5 },
   quickText: { fontSize: 12, color: colors.text, fontWeight: '600' },
   menu: { backgroundColor: '#fff', marginTop: 8 },
+  bizCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', marginTop: 8, padding: 14, borderLeftWidth: 4 },
   item: {
     flexDirection: 'row',
     alignItems: 'center',

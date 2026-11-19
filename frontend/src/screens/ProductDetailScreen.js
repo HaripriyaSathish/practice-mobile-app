@@ -125,6 +125,20 @@ export default function ProductDetailScreen({ route, navigation }) {
 
         <View style={styles.card}>
           {product.brand ? <Text style={styles.brand}>{product.brand.toUpperCase()}</Text> : null}
+          {product.condition && product.condition !== 'new' ? (
+            <View style={styles.badges}>
+              <View style={styles.condBadge}>
+                <Ionicons name="leaf-outline" size={12} color="#2E6B3A" />
+                <Text style={styles.condText}>{product.condition_display}</Text>
+              </View>
+              {product.bought_on_vetri && (
+                <View style={[styles.condBadge, { backgroundColor: colors.accentSoft }]}>
+                  <Ionicons name="shield-checkmark-outline" size={12} color="#8a5a00" />
+                  <Text style={[styles.condText, { color: '#8a5a00' }]}>Bought on Vetri</Text>
+                </View>
+              )}
+            </View>
+          ) : null}
           <Text display style={styles.name}>{product.name}</Text>
           <View style={{ marginTop: 8 }}>
             <Rating value={product.rating} count={`${product.rating_count} ratings`} />
@@ -152,6 +166,48 @@ export default function ProductDetailScreen({ route, navigation }) {
             </Pressable>
           ) : null}
         </View>
+
+        {product.wholesale ? (
+          <View style={[styles.card, styles.wholesaleCard]}>
+            <View style={styles.wsHead}>
+              <Ionicons name="business-outline" size={18} color={colors.primary} />
+              <Text display style={styles.cardTitle}>Wholesale (B2B)</Text>
+            </View>
+            {product.wholesale.visible ? (
+              <>
+                <Text style={styles.wsMoq}>Minimum order for business: {product.wholesale.moq} pieces</Text>
+                <View style={styles.wsTable}>
+                  <View style={[styles.wsRow, styles.wsRowHead]}>
+                    <Text style={styles.wsCellHead}>Quantity</Text>
+                    <Text style={styles.wsCellHead}>Price / piece</Text>
+                  </View>
+                  {product.wholesale.moq < (product.wholesale.tiers[0]?.min_qty || 0) && (
+                    <View style={styles.wsRow}>
+                      <Text style={styles.wsCell}>{product.wholesale.moq} – {product.wholesale.tiers[0].min_qty - 1}</Text>
+                      <Text style={styles.wsCell}>{formatPrice(product.price)}</Text>
+                    </View>
+                  )}
+                  {product.wholesale.tiers.map((t, i) => {
+                    const next = product.wholesale.tiers[i + 1];
+                    return (
+                      <View key={t.min_qty} style={styles.wsRow}>
+                        <Text style={styles.wsCell}>{next ? `${t.min_qty} – ${next.min_qty - 1}` : `${t.min_qty}+`}</Text>
+                        <Text style={[styles.wsCell, { color: colors.green, fontWeight: '700' }]}>{formatPrice(t.price)}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+                <Text style={styles.wsHint}>The cart applies the right price automatically.</Text>
+                {!product.bought_on_vetri && (
+                  <Button title="Need more? Get a quote" variant="outline" icon="chatbox-ellipses-outline"
+                    onPress={() => navigation.navigate('RequestQuote', { product })} style={{ marginTop: 10 }} />
+                )}
+              </>
+            ) : (
+              <Text style={styles.wsHint}>{product.wholesale.message}</Text>
+            )}
+          </View>
+        ) : null}
 
         <View style={styles.card}>
           {[
@@ -247,6 +303,18 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   soldByText: { fontSize: 12.5, color: colors.ink },
+  badges: { flexDirection: 'row', gap: 6, marginTop: 6, marginBottom: 2 },
+  condBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#E6F4EA', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3 },
+  condText: { fontSize: 11.5, fontWeight: '600', color: '#2E6B3A' },
+  wholesaleCard: { borderWidth: 1, borderColor: colors.accent },
+  wsHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  wsMoq: { fontSize: 13, color: colors.ink, marginTop: 6, fontWeight: '600' },
+  wsTable: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, marginTop: 10, overflow: 'hidden' },
+  wsRow: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: colors.border },
+  wsRowHead: { backgroundColor: colors.accentSoft, borderTopWidth: 0 },
+  wsCellHead: { flex: 1, padding: 8, fontSize: 12, fontWeight: '700', color: colors.primary },
+  wsCell: { flex: 1, padding: 8, fontSize: 13.5, color: colors.ink },
+  wsHint: { fontSize: 12.5, color: colors.muted, marginTop: 8, lineHeight: 18 },
   name: { fontSize: 23, color: colors.ink, marginTop: 4, lineHeight: 30 },
   save: { color: colors.green, fontWeight: '700', marginTop: 6, fontSize: 13 },
   stock: { marginTop: 6, fontWeight: '700', fontSize: 13 },

@@ -29,3 +29,12 @@ class IsApprovedSeller(BasePermission):
 
     def has_permission(self, request, view):
         return role_of(request.user) == Profile.ROLE_SELLER and request.user.profile.is_approved
+
+
+class IsApprovedSellerOrReseller(BasePermission):
+    """Order screens: approved sellers, and buyers who sell their own resale listings."""
+    message = "Please login with a seller account."
+
+    def has_permission(self, request, view):
+        role = role_of(request.user)
+        return role == Profile.ROLE_BUYER or (role == Profile.ROLE_SELLER and request.user.profile.is_approved)

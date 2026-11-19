@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../api';
 import { Field, FormError, passwordProblem, RoleTabs } from '../components/AuthUI';
 import { Button } from '../components/common';
+import StatePicker from '../components/StatePicker';
 import Text from '../components/Text';
 import { colors } from '../theme';
 
@@ -15,7 +16,12 @@ const USERNAME_RE = /^[A-Za-z0-9._-]{3,}$/;
 export default function SignupScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
   const [role, setRole] = useState(route.params?.role || 'buyer');
-  const [form, setForm] = useState({ full_name: '', username: '', email: '', phone: '', shop_name: '', password: '', confirm: '' });
+  const [buyerType, setBuyerType] = useState('personal');
+  const [form, setForm] = useState({
+    full_name: '', username: '', email: '', phone: '', shop_name: '', company_name: '', gstin: '', state: 'Tamil Nadu',
+    password: '', confirm: '',
+  });
+  const isBusiness = role === 'buyer' && buyerType === 'business';
   const [touched, setTouched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -30,6 +36,8 @@ export default function SignupScreen({ navigation, route }) {
     email: !EMAIL_RE.test(form.email.trim()) && 'Enter a valid email.',
     phone: form.phone && form.phone.length !== 10 && 'Enter a 10-digit mobile number.',
     shop_name: role === 'seller' && !form.shop_name.trim() && 'Enter your shop name.',
+    company_name: isBusiness && !form.company_name.trim() && 'Enter your company name.',
+    gstin: (isBusiness || form.gstin) && !/^[0-9A-Z]{15}$/.test(form.gstin) && 'GSTIN is 15 letters/numbers (test: 33ABCDE1234F1Z5).',
     password: passwordProblem(form.password),
     confirm: form.confirm !== form.password && 'Passwords do not match.',
   };
@@ -48,7 +56,10 @@ export default function SignupScreen({ navigation, route }) {
         email: form.email.trim().toLowerCase(),
         phone: form.phone,
         password: form.password,
-        ...(role === 'seller' ? { shop_name: form.shop_name.trim() } : {}),
+        state: form.state,
+        gstin: form.gstin,
+        ...(role === 'seller' ? { shop_name: form.shop_name.trim() } : { buyer_type: buyerType }),
+        ...(isBusiness ? { company_name: form.company_name.trim() } : {}),
       };
       const res = await api('/auth/register/', { method: 'POST', body });
       navigation.navigate('Otp', { email: res.email, role, purpose: 'signup', resendIn: res.resend_in });
@@ -79,6 +90,49 @@ export default function SignupScreen({ navigation, route }) {
 
         <RoleTabs value={role} onChange={setRole} />
 
+        {role === 'buyer' && (
+          <View style={styles.typeRow}>
+            {[
+              ['personal', 'person-outline', 'Personal', 'Shopping for yourself'],
+              ['business', 'business-outline', 'Business (B2B)', 'Wholesale prices & GST bill'],
+            ].map(([key, icon, title, hint]) => {
+              const active = buyerType === key;
+              return (
+                <Pressable key={key} onPress={() => setBuyerType(key)} style={[styles.type, active && styles.typeActive]}
+                  accessibilityRole="radio" accessibilityState={{ checked: active }}>
+                  <Ionicons name={active ? 'radio-button-on' : 'radio-button-off'} size={18} color={active ? colors.primary : colors.muted} />
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                      <Ionicons name={icon} size={14} color={colors.ink} />
+                      <Text style={styles.typeTitle}>{title}</Text>
+                    </View>
+                    <Text style={styles.typeHint}>{hint}</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+        {isBusiness && (
+          <View style={styles.note}>
+            <Ionicons name="information-circle-outline" size={16} color="#7a5a2a" />
+            <Text style={styles.noteText}>
+              Our team checks your GSTIN, then you see wholesale prices and can ask sellers for quotes. You can shop at normal
+              prices meanwhile.
+            </Text>
+          </View>
+        )}
+
+        {isBusiness && (
+          <Field label="COMPANY NAME" icon="business-outline" placeholder="e.g. Acme Traders" value={form.company_name}
+            onChangeText={set('company_name')} autoCapitalize="words" error={err('company_name')} style={styles.gap} />
+        )}
+        {(isBusiness || role === 'seller') && (
+          <Field label={isBusiness ? 'GSTIN' : 'GSTIN (OPTIONAL)'} icon="document-text-outline" placeholder="15 characters, e.g. 33ABCDE1234F1Z5"
+            value={form.gstin} onChangeText={(v) => set('gstin')(v.replace(/\s/g, '').toUpperCase().slice(0, 15))}
+            autoCapitalize="characters" error={err('gstin')} style={styles.gap} />
+        )}
+
         <Field label="FULL NAME" icon="person-outline" placeholder="Your name" value={form.full_name}
           onChangeText={set('full_name')} autoCapitalize="words" autoComplete="name" error={err('full_name')} style={styles.gap} />
         {role === 'seller' && (
@@ -91,6 +145,7 @@ export default function SignupScreen({ navigation, route }) {
           onChangeText={set('email')} keyboardType="email-address" autoComplete="email" error={err('email')} style={styles.gap} />
         <Field label="MOBILE (OPTIONAL)" icon="call-outline" placeholder="10-digit mobile number" value={form.phone}
           onChangeText={set('phone')} keyboardType="number-pad" maxLength={10} error={err('phone')} style={styles.gap} />
+        <StatePicker value={form.state} onChange={set('state')} style={styles.gap} />
         <Field label="PASSWORD" icon="lock-closed-outline" secure placeholder="At least 8 characters" value={form.password}
           onChangeText={set('password')} autoComplete="new-password" error={err('password')} style={styles.gap} />
         <Field label="CONFIRM PASSWORD" icon="lock-closed-outline" secure placeholder="Type it again" value={form.confirm}
@@ -125,6 +180,22 @@ const styles = StyleSheet.create({
   title: { fontSize: 27, color: colors.ink },
   sub: { fontSize: 13.5, color: colors.muted, marginTop: 4, marginBottom: 18, lineHeight: 20 },
   gap: { marginTop: 14 },
+  typeRow: { gap: 8, marginTop: 14 },
+  type: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 13,
+    padding: 11,
+    backgroundColor: '#FBF9F7',
+  },
+  typeActive: { borderColor: colors.primary, backgroundColor: '#fff' },
+  typeTitle: { fontSize: 14, fontWeight: '600', color: colors.ink },
+  typeHint: { fontSize: 11.5, color: colors.muted },
+  note: { flexDirection: 'row', gap: 6, backgroundColor: colors.accentSoft, borderRadius: 10, padding: 10, marginTop: 10 },
+  noteText: { flex: 1, fontSize: 12, color: '#7a5a2a', lineHeight: 17 },
   link: { color: colors.primary, fontWeight: '600', fontSize: 13.5 },
   muted: { color: colors.muted, fontSize: 13.5 },
   switchRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 18 },

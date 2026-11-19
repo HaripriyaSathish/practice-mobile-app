@@ -180,7 +180,16 @@ export default function OrdersScreen({ route, navigation }) {
                       <Text style={styles.itemMeta}>
                         Sold by {it.seller_name}
                         {it.status && it.status !== o.status ? ` · ${it.status_display}` : ''}
+                        {it.price_type && it.price_type !== 'retail' ? ` · ${it.price_type_display}` : ''}
                       </Text>
+                    ) : null}
+                    {it.can_resell ? (
+                      <Pressable onPress={() => navigation.navigate('Resell', { item: it })} style={styles.resell} hitSlop={6}>
+                        <Ionicons name="leaf-outline" size={13} color="#2E6B3A" />
+                        <Text style={styles.resellText}>Resell this</Text>
+                      </Pressable>
+                    ) : it.resold_qty > 0 ? (
+                      <Text style={[styles.itemMeta, { color: '#2E6B3A' }]}>Listed for resale ({it.resold_qty})</Text>
                     ) : null}
                   </View>
                 </View>
@@ -284,6 +293,8 @@ export default function OrdersScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
+  resell: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: '#E6F4EA', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, marginTop: 4 },
+  resellText: { fontSize: 12, color: '#2E6B3A', fontWeight: '700' },
   container: { flex: 1, backgroundColor: colors.bg },
   card: { backgroundColor: '#fff', marginTop: 8, padding: 14 },
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

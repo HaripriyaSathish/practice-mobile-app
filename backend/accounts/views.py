@@ -8,6 +8,7 @@ Flow
   Forgot  : POST forgot-password/ {email, role} -> OTP -> POST reset-password/ {email, role, otp, new_password}
 The same email may own one buyer account and one seller account (separate usernames and passwords).
 """
+import re
 import secrets
 from datetime import timedelta
 
@@ -25,7 +26,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import EmailOTP, Profile
+from .models import GSTIN_RE, INDIAN_STATES, EmailOTP, Profile
 
 User = get_user_model()
 ROLES = (Profile.ROLE_BUYER, Profile.ROLE_SELLER)
@@ -65,11 +66,30 @@ def _find_user(email, role):
 def user_data(user):
     p, _ = Profile.objects.get_or_create(user=user)
     data = {"id": user.id, "username": user.username, "email": user.email, "full_name": p.full_name,
-            "phone": p.phone, "role": p.role}
+            "phone": p.phone, "role": p.role, "state": p.state}
     if p.is_seller:
         data.update({"shop_name": p.shop_name, "shop_description": p.shop_description, "gstin": p.gstin,
                      "is_approved": p.is_approved})
+    else:
+        data.update({"buyer_type": p.buyer_type, "company_name": p.company_name, "gstin": p.gstin,
+                     "is_approved": p.is_approved if p.is_business else True,
+                     "is_business": p.is_business, "is_approved_business": p.is_approved_business})
     return data
+
+
+def _clean_gstin(value):
+    return re.sub(r"\s", "", str(value or "")).upper()[:20]
+
+
+def _clean_state(value):
+    s = str(value or "").strip()
+    match = next((st for st in INDIAN_STATES if st.lower() == s.lower()), None)
+    return match
+
+
+@api_view(["GET"])
+def states(request):
+    return Response(INDIAN_STATES)
 
 
 def _send_otp(email, role, purpose):
@@ -137,6 +157,21 @@ def register(request):
     full_name = str(d.get("full_name") or "").strip()[:120]
     phone = "".join(ch for ch in str(d.get("phone") or "") if ch.isdigit())[:15]
     shop_name = str(d.get("shop_name") or "").strip()[:120]
+    buyer_type = str(d.get("buyer_type") or Profile.BUYER_PERSONAL).lower()
+    if role == Profile.ROLE_SELLER or buyer_type not in (Profile.BUYER_PERSONAL, Profile.BUYER_BUSINESS):
+        buyer_type = Profile.BUYER_PERSONAL
+    company_name = str(d.get("company_name") or "").strip()[:150]
+    gstin = _clean_gstin(d.get("gstin"))
+    state = _clean_state(d.get("state") or "Tamil Nadu")
+    if not state:
+        return _err("Please choose your state.")
+    if buyer_type == Profile.BUYER_BUSINESS:
+        if not company_name:
+            return _err("Please enter your company name.")
+        if not re.match(GSTIN_RE, gstin):
+            return _err("GSTIN must be 15 letters/numbers (for testing you can use 33ABCDE1234F1Z5).")
+    elif gstin and not re.match(GSTIN_RE, gstin):
+        return _err("That GSTIN does not look right. Leave it empty if you do not have one.")
     try:
         email = _email(d.get("email"))
     except ValidationError:
@@ -169,7 +204,8 @@ def register(request):
         user = User(username=username, email=email, is_active=False)
         user.set_password(password)
         user.save()
-        Profile.objects.create(user=user, role=role, full_name=full_name, phone=phone, shop_name=shop_name)
+        Profile.objects.create(user=user, role=role, full_name=full_name, phone=phone, shop_name=shop_name,
+                               buyer_type=buyer_type, company_name=company_name, gstin=gstin, state=state)
     error = _send_otp(email, role, "signup")
     return error or _otp_sent(email, "signup", role=role)
 
@@ -311,10 +347,22 @@ def me(request):
         d = request.data
         p.full_name = str(d.get("full_name", p.full_name))[:120]
         p.phone = "".join(ch for ch in str(d.get("phone", p.phone)) if ch.isdigit())[:15]
+        if "state" in d:
+            p.state = _clean_state(d.get("state")) or p.state
+        if "gstin" in d:
+            gstin = _clean_gstin(d.get("gstin"))
+            if gstin and not re.match(GSTIN_RE, gstin):
+                return _err("That GSTIN does not look right.")
+            if p.is_business and not gstin:
+                return _err("Business accounts need a GSTIN.")
+            if p.is_business and gstin != p.gstin:
+                p.is_approved = False  # a new GSTIN must be checked again
+            p.gstin = gstin
         if p.is_seller:
             p.shop_name = str(d.get("shop_name", p.shop_name)).strip()[:120] or p.shop_name
             p.shop_description = str(d.get("shop_description", p.shop_description))[:2000]
-            p.gstin = str(d.get("gstin", p.gstin)).strip()[:20]
+        elif p.is_business and "company_name" in d:
+            p.company_name = str(d.get("company_name")).strip()[:150] or p.company_name
         p.save()
     return Response(user_data(request.user))
 

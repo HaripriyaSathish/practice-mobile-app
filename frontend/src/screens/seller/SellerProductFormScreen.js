@@ -24,7 +24,11 @@ export default function SellerProductFormScreen({ navigation, route }) {
   const [categories, setCategories] = useState([]);
   const [loaded, setLoaded] = useState(!id);
   const [loadError, setLoadError] = useState('');
-  const [form, setForm] = useState({ name: '', brand: '', description: '', price: '', mrp: '', stock: '10', category: null, is_active: true });
+  const [form, setForm] = useState({
+    name: '', brand: '', description: '', price: '', mrp: '', stock: '10', category: null, is_active: true,
+    condition: 'new', gst_rate: 18, hsn_code: '', is_wholesale: false, moq: '10',
+  });
+  const [tiers, setTiers] = useState([{ min_qty: '10', price: '' }]);
   const [mainImage, setMainImage] = useState(null); // { uri, asset? }
   const [gallery, setGallery] = useState([]); // existing: { id, uri }   new: { key, uri, asset }
   const [removeIds, setRemoveIds] = useState([]);
@@ -40,7 +44,10 @@ export default function SellerProductFormScreen({ navigation, route }) {
           setForm({
             name: p.name, brand: p.brand || '', description: p.description || '', price: String(Number(p.price)),
             mrp: String(Number(p.mrp)), stock: String(p.stock), category: p.category, is_active: p.is_active,
+            condition: p.condition || 'new', gst_rate: p.gst_rate ?? 18, hsn_code: p.hsn_code || '',
+            is_wholesale: !!p.is_wholesale, moq: String(p.moq || 10),
           });
+          if (p.tiers?.length) setTiers(p.tiers.map((t) => ({ min_qty: String(t.min_qty), price: String(Number(t.price)) })));
           setMainImage({ uri: p.image });
           setGallery((p.gallery || []).map((g) => ({ id: g.id, uri: g.image })));
           setLoaded(true);
@@ -103,6 +110,14 @@ export default function SellerProductFormScreen({ navigation, route }) {
       fd.append('stock', form.stock);
       fd.append('category', String(form.category));
       fd.append('is_active', form.is_active ? 'true' : 'false');
+      fd.append('condition', form.condition);
+      fd.append('gst_rate', String(form.gst_rate));
+      fd.append('hsn_code', form.hsn_code.trim());
+      fd.append('is_wholesale', form.is_wholesale ? 'true' : 'false');
+      if (form.is_wholesale) {
+        fd.append('moq', form.moq || '1');
+        fd.append('tiers', JSON.stringify(tiers.filter((t) => t.min_qty && t.price).map((t) => ({ min_qty: Number(t.min_qty), price: Number(t.price) }))));
+      }
       if (mainImage.asset) appendImage(fd, 'image', mainImage.asset);
       gallery.filter((g) => g.asset).forEach((g) => appendImage(fd, 'gallery', g.asset));
       if (removeIds.length) fd.append('remove_gallery', removeIds.join(','));
@@ -209,6 +224,14 @@ export default function SellerProductFormScreen({ navigation, route }) {
           {discount > 0 && <Text style={styles.discount}>Buyers will see {discount}% off</Text>}
           <Label>STOCK</Label>
           <Input value={form.stock} onChangeText={set('stock')} keyboardType="number-pad" placeholder="How many you have" />
+          <Label>CONDITION</Label>
+          <View style={styles.chips}>
+            {[['new', 'New'], ['like_new', 'Like new'], ['good', 'Used - Good'], ['fair', 'Used - Fair']].map(([k, label]) => (
+              <Pressable key={k} onPress={() => set('condition')(k)} style={[styles.chip, form.condition === k && styles.chipActive]}>
+                <Text style={[styles.chipText, form.condition === k && { color: '#fff' }]}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
           <View style={styles.switchRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.switchTitle}>Show in shop</Text>
@@ -216,6 +239,59 @@ export default function SellerProductFormScreen({ navigation, route }) {
             </View>
             <Switch value={form.is_active} onValueChange={set('is_active')} trackColor={{ true: colors.primary }} thumbColor="#fff" />
           </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.switchTitle}>GST</Text>
+          <Text style={styles.switchSub}>Your price includes GST. The invoice shows the tax breakup.</Text>
+          <Label>GST RATE</Label>
+          <View style={styles.chips}>
+            {[0, 5, 12, 18, 28].map((r) => (
+              <Pressable key={r} onPress={() => set('gst_rate')(r)} style={[styles.chip, form.gst_rate === r && styles.chipActive]}>
+                <Text style={[styles.chipText, form.gst_rate === r && { color: '#fff' }]}>{r}%</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Label>HSN CODE (OPTIONAL)</Label>
+          <Input value={form.hsn_code} onChangeText={(t) => set('hsn_code')(t.replace(/\D/g, '').slice(0, 8))} keyboardType="number-pad" placeholder="e.g. 5208 for cotton fabric" />
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.switchTitle}>Sell wholesale (B2B)</Text>
+              <Text style={styles.switchSub}>Verified business buyers get lower prices for bulk quantities and can ask you for quotes.</Text>
+            </View>
+            <Switch value={form.is_wholesale} onValueChange={set('is_wholesale')} trackColor={{ true: colors.primary }} thumbColor="#fff" />
+          </View>
+          {form.is_wholesale && (
+            <>
+              <Label>MINIMUM ORDER FOR BUSINESS (PIECES)</Label>
+              <Input value={form.moq} onChangeText={(t) => set('moq')(t.replace(/\D/g, ''))} keyboardType="number-pad" />
+              <Label>PRICE SLABS</Label>
+              {tiers.map((t, i) => (
+                <View key={i} style={styles.tierRow}>
+                  <Input style={{ flex: 1 }} value={t.min_qty} keyboardType="number-pad" placeholder="Qty"
+                    onChangeText={(v) => setTiers((ts) => ts.map((x, j) => (j === i ? { ...x, min_qty: v.replace(/\D/g, '') } : x)))} />
+                  <Text style={styles.tierText}>+ pcs at ₹</Text>
+                  <Input style={{ flex: 1.2 }} value={t.price} keyboardType="decimal-pad" placeholder="Price"
+                    onChangeText={(v) => setTiers((ts) => ts.map((x, j) => (j === i ? { ...x, price: v.replace(/[^\d.]/g, '') } : x)))} />
+                  {tiers.length > 1 && (
+                    <Pressable onPress={() => setTiers((ts) => ts.filter((_, j) => j !== i))} hitSlop={8} accessibilityLabel="Remove slab">
+                      <Ionicons name="close-circle" size={22} color={colors.muted} />
+                    </Pressable>
+                  )}
+                </View>
+              ))}
+              {tiers.length < 5 && (
+                <Pressable onPress={() => setTiers((ts) => [...ts, { min_qty: '', price: '' }])} style={styles.addTier}>
+                  <Ionicons name="add" size={16} color={colors.primary} />
+                  <Text style={styles.addTierText}>Add slab</Text>
+                </Pressable>
+              )}
+              <Text style={styles.switchSub}>Example: 10+ pcs at ₹450, 50+ pcs at ₹400. Slab prices must be below your normal price.</Text>
+            </>
+          )}
         </View>
 
         <FormError message={error} />
@@ -278,5 +354,9 @@ const styles = StyleSheet.create({
   discount: { color: colors.green, fontSize: 12.5, marginTop: 6, fontWeight: '600' },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16 },
   switchTitle: { fontSize: 14.5, fontWeight: '600', color: colors.ink },
-  switchSub: { fontSize: 12, color: colors.muted },
+  switchSub: { fontSize: 12, color: colors.muted, marginTop: 2, lineHeight: 17 },
+  tierRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  tierText: { fontSize: 12.5, color: colors.muted },
+  addTier: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingVertical: 4, marginBottom: 6 },
+  addTierText: { color: colors.primary, fontWeight: '600', fontSize: 13 },
 });

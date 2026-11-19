@@ -124,7 +124,7 @@ export default function SellerOrdersScreen({ route }) {
 
   return (
     <View style={styles.container}>
-      <TopBar title="Orders" showCart={false} />
+      <TopBar title={route.params?.title || 'Orders'} back={!!route.params?.back} showCart={false} />
       <View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
           {FILTERS.map(([key, label]) => (

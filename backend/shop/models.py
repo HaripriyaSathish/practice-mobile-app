@@ -45,18 +45,40 @@ class Category(models.Model):
 HOUSE_STORE_NAME = "Vetri Shopping Hall"  # products with no seller are sold by the store itself
 
 
+STORE_STATE = "Tamil Nadu"  # state of Vetri Shopping Hall itself, for GST on store-owned products
+
+
 class ProductQuerySet(models.QuerySet):
     def visible(self):
-        """Products buyers may see: active, in an active category, sold by the store or an approved seller."""
-        return self.filter(is_active=True, category__is_active=True).filter(
+        """Products buyers may see: active, approved listing, in an active category, sold by the store,
+        an approved seller, or a buyer reselling something they bought here."""
+        return self.filter(is_active=True, category__is_active=True, review_status="approved").filter(
             models.Q(seller__isnull=True)
-            | models.Q(seller__is_active=True, seller__profile__role="seller", seller__profile__is_approved=True))
+            | models.Q(seller__is_active=True, seller__profile__role="seller", seller__profile__is_approved=True)
+            | models.Q(seller__is_active=True, seller__profile__role="buyer", resale_of__isnull=False))
 
 
 class Product(models.Model):
+    CONDITION_CHOICES = [("new", "New"), ("like_new", "Like new"), ("good", "Used - Good"), ("fair", "Used - Fair")]
+    GST_CHOICES = [(0, "0%"), (5, "5%"), (12, "12%"), (18, "18%"), (28, "28%")]
+    REVIEW_CHOICES = [("approved", "Approved"), ("pending", "Waiting for review"), ("rejected", "Rejected")]
+
     seller = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, related_name="products",
-                               on_delete=models.SET_NULL, limit_choices_to={"profile__role": "seller"},
+                               on_delete=models.SET_NULL,
                                help_text=f"Leave empty for products sold by {HOUSE_STORE_NAME} itself")
+    condition = models.CharField(max_length=10, choices=CONDITION_CHOICES, default="new")
+    # ---- resale: a buyer re-listing something they bought and received on Vetri ----
+    resale_of = models.ForeignKey("OrderItem", null=True, blank=True, related_name="resale_listings",
+                                  on_delete=models.SET_NULL, help_text="The original Vetri purchase being resold")
+    review_status = models.CharField(max_length=10, choices=REVIEW_CHOICES, default="approved", db_index=True,
+                                     help_text="Resale listings by buyers wait for admin review")
+    review_note = models.CharField(max_length=200, blank=True)
+    # ---- GST (prices are tax-inclusive; the invoice shows the breakup) ----
+    gst_rate = models.PositiveSmallIntegerField("GST %", choices=GST_CHOICES, default=18)
+    hsn_code = models.CharField("HSN code", max_length=10, blank=True)
+    # ---- B2B wholesale ----
+    is_wholesale = models.BooleanField("Sell wholesale (B2B)", default=False)
+    moq = models.PositiveIntegerField("Minimum order qty (business)", default=1)
     category = models.ForeignKey(Category, related_name="products", on_delete=models.CASCADE)
     name = models.CharField(max_length=200)
     slug = models.SlugField(max_length=220, unique=True, blank=True)
@@ -81,8 +103,27 @@ class Product(models.Model):
     def seller_name(self):
         if self.seller_id:
             profile = getattr(self.seller, "profile", None)
+            if profile and profile.role == "buyer":
+                first = (profile.full_name or self.seller.username).split(" ")[0]
+                return f"{first} (resale)"
             return (profile and profile.shop_name) or self.seller.username
         return HOUSE_STORE_NAME
+
+    @property
+    def seller_state(self):
+        if self.seller_id:
+            profile = getattr(self.seller, "profile", None)
+            return (profile and profile.state) or STORE_STATE
+        return STORE_STATE
+
+    @property
+    def is_resale(self):
+        return self.resale_of_id is not None
+
+    @property
+    def sold_count(self):
+        """Pieces sold (not cancelled) - used to stop people reselling more than they bought."""
+        return self.orderitem_set.exclude(status="CANCELLED").aggregate(n=models.Sum("quantity"))["n"] or 0
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -102,6 +143,20 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class WholesaleTier(models.Model):
+    """B2B price slab: business buyers ordering at least `min_qty` pay `price` per piece."""
+    product = models.ForeignKey(Product, related_name="tiers", on_delete=models.CASCADE)
+    min_qty = models.PositiveIntegerField()
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        ordering = ["min_qty"]
+        unique_together = ("product", "min_qty")
+
+    def __str__(self):
+        return f"{self.product} - {self.min_qty}+ @ {self.price}"
 
 
 class ProductImage(models.Model):
@@ -128,10 +183,50 @@ class HomeSection(models.Model):
         return self.title
 
 
+class Quote(models.Model):
+    """B2B 'Get a quote': a business buyer asks a seller for a special price for a large quantity."""
+    STATUS_CHOICES = [
+        ("REQUESTED", "Waiting for seller"),
+        ("QUOTED", "Price offered"),
+        ("ACCEPTED", "Accepted - in cart"),
+        ("ORDERED", "Ordered"),
+        ("DECLINED", "Declined by seller"),
+        ("REJECTED", "Rejected by buyer"),
+    ]
+    VALID_DAYS = 7
+
+    buyer = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="quotes", on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, related_name="quotes", on_delete=models.CASCADE)
+    seller = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, related_name="quotes_received",
+                               on_delete=models.SET_NULL, help_text=f"Empty = {HOUSE_STORE_NAME} answers in admin")
+    quantity = models.PositiveIntegerField()
+    note = models.TextField(blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="REQUESTED", db_index=True)
+    quoted_price = models.DecimalField("Offered price per piece", max_digits=10, decimal_places=2,
+                                       null=True, blank=True)
+    seller_note = models.TextField(blank=True)
+    valid_until = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone
+        return bool(self.valid_until and timezone.now() > self.valid_until)
+
+    def __str__(self):
+        return f"Quote #{self.id}: {self.quantity} x {self.product}"
+
+
 class CartItem(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="cart_items", on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(default=1)
+    quote = models.ForeignKey(Quote, null=True, blank=True, on_delete=models.SET_NULL,
+                              help_text="Accepted B2B quote: fixes the price and quantity")
     added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -187,6 +282,10 @@ class Order(models.Model):
     full_name = models.CharField(max_length=120)
     phone = models.CharField(max_length=15)
     address = models.TextField()
+    ship_state = models.CharField(max_length=60, blank=True, help_text="Place of supply for GST")
+    # B2B: filled when a business buyer orders, printed on the GST invoice
+    buyer_company = models.CharField(max_length=150, blank=True)
+    buyer_gstin = models.CharField("Buyer GSTIN", max_length=20, blank=True)
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     payment_method = models.CharField(max_length=10, choices=PAYMENT_CHOICES, default="COD")
     payment_status = models.CharField(max_length=10, choices=PAYMENT_STATUS_CHOICES, default="COD")
@@ -233,10 +332,31 @@ class OrderItem(models.Model):
     quantity = models.PositiveIntegerField(default=1)
     status = models.CharField(max_length=20, choices=Order.STATUS_CHOICES, default="PLACED")
     status_updated_at = models.DateTimeField(null=True, blank=True)
+    # snapshot at order time
+    PRICE_TYPES = [("retail", "Retail"), ("wholesale", "Wholesale"), ("quote", "Quoted price")]
+    price_type = models.CharField(max_length=10, choices=PRICE_TYPES, default="retail")
+    condition = models.CharField(max_length=10, choices=Product.CONDITION_CHOICES, default="new")
+    gst_rate = models.PositiveSmallIntegerField(default=18)
+    hsn_code = models.CharField(max_length=10, blank=True)
+    seller_state = models.CharField(max_length=60, blank=True)
 
     @property
     def subtotal(self):
         return self.price * self.quantity
+
+    @property
+    def gst(self):
+        """Tax-inclusive breakup: taxable value + CGST/SGST (same state) or IGST (other state)."""
+        from decimal import ROUND_HALF_UP, Decimal
+        total = self.subtotal
+        rate = Decimal(self.gst_rate or 0)
+        taxable = (total * 100 / (100 + rate)).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        tax = total - taxable
+        same_state = (self.seller_state or STORE_STATE).lower() == (self.order.ship_state or STORE_STATE).lower()
+        half = (tax / 2).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        return {"taxable": taxable, "tax": tax, "rate": self.gst_rate, "same_state": same_state,
+                "cgst": half if same_state else Decimal("0"), "sgst": (tax - half) if same_state else Decimal("0"),
+                "igst": Decimal("0") if same_state else tax}
 
     @property
     def seller_name(self):

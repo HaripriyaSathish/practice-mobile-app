@@ -20,7 +20,8 @@ from django.db.migrations.executor import MigrationExecutor
 EXCLUDE = ["contenttypes", "auth.permission", "admin.logentry", "sessions", "authtoken.tokenproxy"]
 TABLES = ["auth_user", "auth_group", "auth_user_groups", "auth_user_user_permissions", "auth_group_permissions",
           "authtoken_token", "accounts_emailotp", "accounts_profile", "shop_banner", "shop_category",
-          "shop_product", "shop_productimage", "shop_homesection", "shop_homesection_products", "shop_cartitem",
+          "shop_product", "shop_wholesaletier", "shop_quote", "shop_productimage", "shop_homesection",
+          "shop_homesection_products", "shop_cartitem",
           "shop_wishlistitem", "shop_address", "shop_order", "shop_orderitem", "django_admin_log", "django_session"]
 
 

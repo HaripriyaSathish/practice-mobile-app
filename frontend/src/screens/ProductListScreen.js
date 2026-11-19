@@ -17,7 +17,7 @@ const SORTS = [
 
 /** Used for a category list, "view all" and search (when params.search is defined). */
 export default function ProductListScreen({ route, navigation }) {
-  const { categoryId, seller, title } = route.params || {};
+  const { categoryId, seller, condition, wholesale, title } = route.params || {};
   const isSearch = route.params?.search !== undefined;
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState(route.params?.search || '');
@@ -30,6 +30,8 @@ export default function ProductListScreen({ route, navigation }) {
     const params = new URLSearchParams();
     if (categoryId) params.append('category', categoryId);
     if (seller) params.append('seller', seller);
+    if (condition) params.append('condition', condition);
+    if (wholesale) params.append('wholesale', '1');
     if (q) params.append('search', q);
     if (s) params.append('sort', s);
     try {

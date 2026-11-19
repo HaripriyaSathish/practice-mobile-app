@@ -35,6 +35,11 @@ export default function ProductCard({ product, onPress, width }) {
             <Text style={styles.badgeText}>-{product.discount_percent}%</Text>
           </View>
         )}
+        {product.condition && product.condition !== 'new' && (
+          <View style={styles.usedBadge}>
+            <Text style={styles.usedText}>{product.bought_on_vetri ? '♻ ' : ''}{product.condition_display}</Text>
+          </View>
+        )}
         {product.stock === 0 && (
           <View style={styles.soldOut}>
             <Text style={styles.soldOutText}>SOLD OUT</Text>
@@ -58,6 +63,16 @@ export default function ProductCard({ product, onPress, width }) {
 }
 
 const styles = StyleSheet.create({
+  usedBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    backgroundColor: 'rgba(46,107,58,0.92)',
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  usedText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   card: { backgroundColor: colors.card, borderRadius: 16, overflow: 'hidden', ...shadow },
   gridCard: { flex: 1, margin: 6 },
   imageWrap: { aspectRatio: 0.9, backgroundColor: colors.surface },

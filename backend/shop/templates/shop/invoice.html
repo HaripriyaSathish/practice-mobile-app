@@ -46,6 +46,8 @@
       <td valign="top" width="50%" style="padding-right:10px;">
         <div style="font-size:11px;font-weight:700;color:#8B1E3F;letter-spacing:1px;">BILLED / SHIPPED TO</div>
         <div style="font-size:14px;font-weight:700;margin-top:6px;">{{ order.full_name }}</div>
+        {% if is_b2b %}<div style="font-size:13px;font-weight:700;color:#8B1E3F;margin-top:2px;">{{ order.buyer_company }}</div>
+        <div style="font-size:12px;color:#555;">GSTIN: <b>{{ order.buyer_gstin }}</b></div>{% endif %}
         <div style="font-size:13px;color:#555;line-height:1.5;margin-top:2px;">{{ order.address }}<br>Phone: {{ order.phone }}<br>{{ order.user.email }}</div>
       </td>
       <td valign="top" width="50%" style="padding-left:10px;">
@@ -75,18 +77,33 @@
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
       <tr style="background:#FFF3D6;">
         <th align="left" style="padding:10px;color:#8B1E3F;border-bottom:2px solid #F4A300;">Item</th>
+        <th align="center" style="padding:10px;color:#8B1E3F;border-bottom:2px solid #F4A300;">HSN</th>
         <th align="center" style="padding:10px;color:#8B1E3F;border-bottom:2px solid #F4A300;">Qty</th>
         <th align="right" style="padding:10px;color:#8B1E3F;border-bottom:2px solid #F4A300;">Price</th>
+        <th align="center" style="padding:10px;color:#8B1E3F;border-bottom:2px solid #F4A300;">GST</th>
         <th align="right" style="padding:10px;color:#8B1E3F;border-bottom:2px solid #F4A300;">Total</th>
       </tr>
-      {% for item in items %}
+      {% for row in rows %}{% with item=row.item %}
       <tr style="background:{% cycle '#ffffff' '#FCF8F4' %};">
-        <td style="padding:10px;border-bottom:1px solid #EFE6DD;">{{ item.product_name }}</td>
+        <td style="padding:10px;border-bottom:1px solid #EFE6DD;">{{ item.product_name }}
+          <div style="font-size:11px;color:#888;">Sold by {{ item.seller_name }}{% if item.condition != "new" %} &middot; {{ item.get_condition_display }}{% endif %}{% if item.price_type != "retail" %} &middot; {{ item.get_price_type_display }}{% endif %}{% if item.status == "CANCELLED" %} &middot; <span style="color:#D32F2F;">Cancelled</span>{% endif %}</div></td>
+        <td align="center" style="padding:10px;border-bottom:1px solid #EFE6DD;font-size:12px;">{{ item.hsn_code|default:"-" }}</td>
         <td align="center" style="padding:10px;border-bottom:1px solid #EFE6DD;">{{ item.quantity }}</td>
         <td align="right" style="padding:10px;border-bottom:1px solid #EFE6DD;">&#8377;{{ item.price|floatformat:2 }}</td>
+        <td align="center" style="padding:10px;border-bottom:1px solid #EFE6DD;font-size:12px;">{{ item.gst_rate }}%</td>
         <td align="right" style="padding:10px;border-bottom:1px solid #EFE6DD;font-weight:600;">&#8377;{{ item.subtotal|floatformat:2 }}</td>
       </tr>
-      {% endfor %}
+      {% endwith %}{% endfor %}
+    </table>
+    <!-- GST summary (prices include GST) -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;margin-top:12px;">
+      <tr><td colspan="2" style="padding:6px 10px;background:#FFF3D6;color:#8B1E3F;font-weight:700;">GST summary (all prices include GST)</td></tr>
+      <tr><td style="padding:4px 10px;color:#777;">Taxable value</td><td align="right" style="padding:4px 10px;">&#8377;{{ gst_totals.taxable|floatformat:2 }}</td></tr>
+      {% if gst_totals.cgst %}<tr><td style="padding:4px 10px;color:#777;">CGST</td><td align="right" style="padding:4px 10px;">&#8377;{{ gst_totals.cgst|floatformat:2 }}</td></tr>
+      <tr><td style="padding:4px 10px;color:#777;">SGST</td><td align="right" style="padding:4px 10px;">&#8377;{{ gst_totals.sgst|floatformat:2 }}</td></tr>{% endif %}
+      {% if gst_totals.igst %}<tr><td style="padding:4px 10px;color:#777;">IGST (other state)</td><td align="right" style="padding:4px 10px;">&#8377;{{ gst_totals.igst|floatformat:2 }}</td></tr>{% endif %}
+      <tr><td style="padding:4px 10px;font-weight:700;">Total GST</td><td align="right" style="padding:4px 10px;font-weight:700;">&#8377;{{ gst_total|floatformat:2 }}</td></tr>
+      <tr><td colspan="2" style="padding:4px 10px;color:#999;font-size:11px;">Place of supply: {{ order.ship_state|default:"Tamil Nadu" }}{% if is_b2b %} &middot; Tax invoice for business buyer {{ order.buyer_gstin }}{% endif %}</td></tr>
     </table>
   </td></tr>
 

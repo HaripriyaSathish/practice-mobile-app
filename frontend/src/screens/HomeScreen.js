@@ -228,10 +228,12 @@ export default function HomeScreen({ navigation }) {
                   title={s.title}
                   subtitle={`${s.products.length} curated picks`}
                   onSeeAll={() =>
-                    navigation.navigate('ProductList', {
-                      categoryId: s.products[0].category,
-                      title: s.products[0].category_name,
-                    })
+                    s.id === 'preloved'
+                      ? navigation.navigate('ProductList', { condition: 'used', title: s.title })
+                      : navigation.navigate('ProductList', {
+                          categoryId: s.products[0].category,
+                          title: s.products[0].category_name,
+                        })
                   }
                 />
                 <ProductRow products={s.products} navigation={navigation} />

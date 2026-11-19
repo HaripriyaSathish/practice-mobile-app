@@ -10,10 +10,10 @@ from rest_framework.response import Response
 
 from accounts.permissions import IsBuyer
 
-from . import payments
+from . import payments, pricing
 from .emails import invoice_context, order_from_token, send_order_confirmation
 from .models import (Address, Banner, CartItem, Category, HomeSection, Order,
-                     OrderItem, Product, WishlistItem)
+                     OrderItem, Product, Quote, WishlistItem)
 from .serializers import (AddressSerializer, BannerSerializer, CartItemSerializer,
                           CategorySerializer, HomeSectionSerializer, OrderSerializer,
                           ProductDetailSerializer, ProductSerializer)
@@ -29,8 +29,17 @@ def home(request):
         "categories": CategorySerializer(Category.objects.filter(is_active=True), many=True, context=ctx).data,
         "deals": ProductSerializer(Product.objects.visible().filter(is_featured=True).select_related("seller__profile")[:10],
                                    many=True, context=ctx).data,
-        "sections": HomeSectionSerializer(HomeSection.objects.filter(is_active=True), many=True, context=ctx).data,
+        "sections": HomeSectionSerializer(HomeSection.objects.filter(is_active=True), many=True, context=ctx).data
+        + _preloved_section(ctx),
     })
+
+
+def _preloved_section(ctx):
+    """'Pre-loved' row on the Home screen: used / resale items."""
+    qs = (Product.objects.visible().exclude(condition="new").select_related("seller__profile", "category")
+          .order_by("-created_at")[:10])
+    items = ProductSerializer(qs, many=True, context=ctx).data
+    return [{"id": "preloved", "title": "Pre-loved \u00b7 Resale", "products": items}] if items else []
 
 
 @api_view(["GET"])
@@ -47,6 +56,12 @@ def products(request):
         qs = qs.filter(category_id=cat)
     if seller := request.GET.get("seller"):
         qs = qs.filter(seller_id=seller)
+    if (condition := request.GET.get("condition")) == "used":
+        qs = qs.exclude(condition="new")
+    elif condition == "new":
+        qs = qs.filter(condition="new")
+    if request.GET.get("wholesale") == "1":
+        qs = qs.filter(is_wholesale=True)
     if q := request.GET.get("search"):
         qs = qs.filter(Q(name__icontains=q) | Q(brand__icontains=q) | Q(category__name__icontains=q))
     sort = request.GET.get("sort")
@@ -63,6 +78,7 @@ def products(request):
 def product_detail(request, pk):
     product = get_object_or_404(Product.objects.visible().select_related("seller__profile"), pk=pk)
     data = ProductDetailSerializer(product, context={"request": request}).data
+    data["wholesale"] = pricing.wholesale_info(request.user, product)
     data["in_wishlist"] = (request.user.is_authenticated and
                            WishlistItem.objects.filter(user=request.user, product=product).exists())
     similar = Product.objects.visible().filter(category=product.category).exclude(pk=pk)[:8]
@@ -72,15 +88,20 @@ def product_detail(request, pk):
 
 # ---------------- Cart ----------------
 def _cart_response(request):
-    items = CartItem.objects.filter(user=request.user).select_related("product", "product__category")
-    total = sum(i.product.price * i.quantity for i in items)
-    mrp_total = sum(i.product.mrp * i.quantity for i in items)
+    items = list(CartItem.objects.filter(user=request.user)
+                 .select_related("product", "product__category", "product__seller__profile", "quote")
+                 .prefetch_related("product__tiers"))
+    lines, totals = pricing.cart_summary(request.user, items)
+    data = CartItemSerializer(items, many=True, context={"request": request}).data
+    for row, line in zip(data, lines):
+        row.update({"unit_price": line["unit_price"], "price_type": line["price_type"],
+                    "line_total": line["line_total"], "moq_problem": line["moq_problem"],
+                    "quote_id": line["item"].quote_id})
     return Response({
-        "items": CartItemSerializer(items, many=True, context={"request": request}).data,
+        "items": data,
         "count": sum(i.quantity for i in items),
-        "total": total,
-        "mrp_total": mrp_total,
-        "savings": mrp_total - total,
+        "is_business": pricing.is_b2b(request.user),
+        **totals,
     })
 
 
@@ -91,20 +112,33 @@ def cart(request):
     POST {product_id, quantity, mode}: mode "add" adds to existing qty, "set" sets it. qty 0 removes."""
     if request.method == "POST":
         product = get_object_or_404(Product.objects.visible(), pk=request.data.get("product_id"))
-        qty = int(request.data.get("quantity", 1))
+        if product.seller_id == request.user.id:
+            return Response({"detail": "This is your own resale listing."}, status=400)
+        try:
+            qty = int(request.data.get("quantity", 1))
+        except (TypeError, ValueError):
+            return Response({"detail": "Invalid quantity."}, status=400)
         mode = request.data.get("mode", "add")
-        item = CartItem.objects.filter(user=request.user, product=product).first()
+        item = CartItem.objects.filter(user=request.user, product=product).select_related("quote").first()
         new_qty = (item.quantity if item and mode == "add" else 0) + qty
         if new_qty <= 0:
             if item:
+                if item.quote_id:
+                    Quote.objects.filter(pk=item.quote_id, status="ACCEPTED").update(status="QUOTED")
                 item.delete()
         else:
             if product.stock < 1:
                 return Response({"detail": "Out of stock."}, status=400)
+            if not item and product.is_wholesale and pricing.is_b2b(request.user):
+                new_qty = max(new_qty, product.moq)  # business buyers start at the minimum order
             new_qty = min(new_qty, product.stock)
             if item:
+                if item.quote_id and new_qty != item.quantity:
+                    # changing the quantity drops the special price; the quote can be accepted again
+                    Quote.objects.filter(pk=item.quote_id, status="ACCEPTED").update(status="QUOTED")
+                    item.quote = None
                 item.quantity = new_qty
-                item.save(update_fields=["quantity"])
+                item.save(update_fields=["quantity", "quote"])
             else:
                 CartItem.objects.create(user=request.user, product=product, quantity=new_qty)
     return _cart_response(request)
@@ -154,7 +188,8 @@ def orders(request):
                                    "Please choose Cash on Delivery."}, status=400)
 
     address = get_object_or_404(Address, pk=request.data.get("address_id"), user=request.user)
-    cart_items = list(CartItem.objects.filter(user=request.user).select_related("product"))
+    cart_items = list(CartItem.objects.filter(user=request.user)
+                      .select_related("product__seller__profile", "quote").prefetch_related("product__tiers"))
     if not cart_items:
         return Response({"detail": "Your cart is empty."}, status=400)
     visible = set(Product.objects.visible().filter(pk__in=[ci.product_id for ci in cart_items])
@@ -163,9 +198,14 @@ def orders(request):
         if ci.product_id not in visible:
             return Response({"detail": f"{ci.product.name} is no longer available. Please remove it from your cart."},
                             status=400)
-    for ci in cart_items:
+    lines, totals = pricing.cart_summary(request.user, cart_items)
+    for line in lines:
+        ci = line["item"]
         if ci.product.stock < ci.quantity:
             return Response({"detail": f"Only {ci.product.stock} left for {ci.product.name}."}, status=400)
+        if line["moq_problem"]:
+            return Response({"detail": line["moq_problem"]}, status=400)
+    profile = pricing.profile_of(request.user)
 
     with transaction.atomic():
         order = Order.objects.create(
@@ -173,16 +213,24 @@ def orders(request):
             full_name=address.full_name,
             phone=address.phone,
             address=f"{address.line1}, {address.city}, {address.state} - {address.pincode}",
+            ship_state=address.state,
+            buyer_company=profile.company_name if profile.is_business else "",
+            buyer_gstin=profile.gstin if profile.is_business else "",
             payment_method=payment_method,
             payment_status="COD" if payment_method == "COD" else "PENDING",
-            total_amount=sum(ci.product.price * ci.quantity for ci in cart_items),
+            total_amount=totals["total"],
         )
-        for ci in cart_items:
-            OrderItem.objects.create(order=order, product=ci.product, seller_id=ci.product.seller_id,
-                                     product_name=ci.product.name, price=ci.product.price,
-                                     quantity=ci.quantity)
-            ci.product.stock -= ci.quantity
-            ci.product.save(update_fields=["stock"])
+        for line in lines:
+            ci = line["item"]
+            p = ci.product
+            OrderItem.objects.create(order=order, product=p, seller_id=p.seller_id, product_name=p.name,
+                                     price=line["unit_price"], quantity=ci.quantity, price_type=line["price_type"],
+                                     condition=p.condition, gst_rate=p.gst_rate, hsn_code=p.hsn_code,
+                                     seller_state=p.seller_state)
+            p.stock -= ci.quantity
+            p.save(update_fields=["stock"])
+            if ci.quote_id:
+                Quote.objects.filter(pk=ci.quote_id).update(status="ORDERED")
         CartItem.objects.filter(user=request.user).delete()
 
     data = {}

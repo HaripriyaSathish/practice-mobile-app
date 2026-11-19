@@ -37,9 +37,21 @@ def invoice_url(order, base_url):
 def invoice_context(order, base_url=""):
     items = list(order.items.all())
     mrp_total = sum((i.product.mrp if i.product else i.price) * i.quantity for i in items)
+    from decimal import Decimal
+    rows, sums = [], {"taxable": Decimal("0"), "cgst": Decimal("0"), "sgst": Decimal("0"), "igst": Decimal("0")}
+    for i in items:
+        g = i.gst
+        rows.append({"item": i, "gst": g})
+        if i.status != "CANCELLED":
+            for k in sums:
+                sums[k] += g[k]
     return {
         "order": order,
         "items": items,
+        "rows": rows,
+        "gst_totals": sums,
+        "gst_total": sums["cgst"] + sums["sgst"] + sums["igst"],
+        "is_b2b": bool(order.buyer_gstin),
         "mrp_total": mrp_total,
         "savings": mrp_total - order.total_amount,
         "invoice_link": invoice_url(order, base_url) if base_url else "",

@@ -38,6 +38,11 @@ import SellerDashboardScreen from './src/screens/seller/SellerDashboardScreen';
 import SellerOrdersScreen from './src/screens/seller/SellerOrdersScreen';
 import SellerProductFormScreen from './src/screens/seller/SellerProductFormScreen';
 import SellerProductsScreen from './src/screens/seller/SellerProductsScreen';
+import SellerQuotesScreen from './src/screens/seller/SellerQuotesScreen';
+import QuotesScreen from './src/screens/b2b/QuotesScreen';
+import RequestQuoteScreen from './src/screens/b2b/RequestQuoteScreen';
+import MyResaleScreen from './src/screens/resale/MyResaleScreen';
+import ResellScreen from './src/screens/resale/ResellScreen';
 import { colors, fonts } from './src/theme';
 
 const Stack = createNativeStackNavigator();
@@ -55,6 +60,7 @@ const TAB_ICONS = {
   SellerHome: 'speedometer',
   SellerProducts: 'pricetags',
   SellerOrders: 'receipt',
+  SellerQuotes: 'chatbox-ellipses',
   SellerAccount: 'storefront',
 };
 
@@ -151,6 +157,7 @@ function SellerTabs() {
         <>
           <Tab.Screen name="SellerProducts" component={SellerProductsScreen} options={{ title: 'Products' }} />
           <Tab.Screen name="SellerOrders" component={SellerOrdersScreen} options={{ title: 'Orders' }} />
+          <Tab.Screen name="SellerQuotes" component={SellerQuotesScreen} options={{ title: 'Quotes' }} />
         </>
       )}
       <Tab.Screen name="SellerAccount" component={SellerAccountScreen} options={{ title: 'My Shop' }} />
@@ -189,6 +196,11 @@ function RootNavigator() {
           <Stack.Screen name="Orders" component={OrdersScreen} />
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="Addresses" component={AddressesScreen} />
+          <Stack.Screen name="RequestQuote" component={RequestQuoteScreen} />
+          <Stack.Screen name="Quotes" component={QuotesScreen} />
+          <Stack.Screen name="Resell" component={ResellScreen} />
+          <Stack.Screen name="MyResale" component={MyResaleScreen} />
+          <Stack.Screen name="ResaleOrders" component={SellerOrdersScreen} initialParams={{ title: 'Resale orders', back: true }} />
         </>
       ) : (
         <>

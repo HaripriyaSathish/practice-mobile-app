@@ -10,7 +10,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from accounts.permissions import IsApprovedSeller, IsSeller
+from accounts.permissions import IsApprovedSeller, IsApprovedSellerOrReseller, IsSeller
 
 from .models import Category, Order, OrderItem, Product, ProductImage
 from .multivendor import FLOW, stage, sync_order_status
@@ -38,9 +38,37 @@ def _check_image(f):
 
 def _product_json(product, request):
     data = ProductDetailSerializer(product, context={"request": request}).data
-    data["is_active"] = product.is_active
-    data["description"] = product.description
+    data.update({
+        "is_active": product.is_active, "description": product.description, "gst_rate": product.gst_rate,
+        "hsn_code": product.hsn_code, "moq": product.moq,
+        "tiers": [{"min_qty": t.min_qty, "price": t.price} for t in product.tiers.all()],
+    })
     return data
+
+
+def _parse_tiers(raw, price):
+    """tiers = JSON list [{"min_qty": 10, "price": 450}, ...]. Returns (tiers, error)."""
+    import json
+    if raw in (None, ""):
+        return [], None
+    try:
+        items = json.loads(raw) if isinstance(raw, str) else raw
+        tiers = sorted(((int(t["min_qty"]), Decimal(str(t["price"]))) for t in items), key=lambda t: t[0])
+    except (ValueError, TypeError, KeyError, InvalidOperation):
+        return None, "Price slabs are not valid."
+    seen = set()
+    for qty, p in tiers:
+        if qty < 2:
+            return None, "Each slab needs a minimum quantity of 2 or more."
+        if qty in seen:
+            return None, "Two slabs have the same quantity."
+        seen.add(qty)
+        if p <= 0 or p >= price:
+            return None, f"Slab price for {qty}+ pieces must be lower than the normal price."
+    for (_, a), (_, b) in zip(tiers, tiers[1:]):
+        if b > a:
+            return None, "Bigger quantities should have the same or a lower price."
+    return tiers[:5], None
 
 
 def _apply_fields(product, data, creating):
@@ -76,7 +104,52 @@ def _apply_fields(product, data, creating):
         return "Stock cannot be negative."
     if "is_active" in data:
         product.is_active = str(data.get("is_active")).lower() in ("1", "true", "yes", "on")
+    if "condition" in data:
+        if data.get("condition") not in dict(Product.CONDITION_CHOICES):
+            return "Choose the product condition."
+        product.condition = data.get("condition")
+    if "gst_rate" in data:
+        try:
+            rate = int(data.get("gst_rate"))
+        except (TypeError, ValueError):
+            rate = -1
+        if rate not in dict(Product.GST_CHOICES):
+            return "GST rate must be 0, 5, 12, 18 or 28%."
+        product.gst_rate = rate
+    if "hsn_code" in data:
+        hsn = str(data.get("hsn_code") or "").strip()
+        if hsn and not (hsn.isdigit() and 4 <= len(hsn) <= 8):
+            return "HSN code is 4 to 8 digits."
+        product.hsn_code = hsn
+    if "is_wholesale" in data:
+        product.is_wholesale = str(data.get("is_wholesale")).lower() in ("1", "true", "yes", "on")
+    if "moq" in data:
+        try:
+            product.moq = max(int(data.get("moq") or 1), 1)
+        except (TypeError, ValueError):
+            return "Minimum order must be a number."
+    if product.is_wholesale:
+        tiers, err = _parse_tiers(data.get("tiers") if "tiers" in data else
+                                  ([{"min_qty": t.min_qty, "price": t.price} for t in product.tiers.all()]
+                                   if product.pk else []), product.price)
+        if err:
+            return err
+        if not tiers:
+            return "Add at least one wholesale price slab (e.g. 10+ pieces at a lower price)."
+        if tiers[0][0] < product.moq:
+            return "The first slab quantity cannot be below the minimum order."
+        product._new_tiers = tiers
+    else:
+        product._new_tiers = []
     return None
+
+
+def _save_tiers(product):
+    from .models import WholesaleTier
+    if hasattr(product, "_new_tiers"):
+        product.tiers.all().delete()
+        WholesaleTier.objects.bulk_create(
+            [WholesaleTier(product=product, min_qty=q, price=p) for q, p in product._new_tiers])
 
 
 # ---------------- dashboard ----------------
@@ -133,6 +206,7 @@ def products(request):
     with transaction.atomic():
         product.image = image
         product.save()
+        _save_tiers(product)
         for i, f in enumerate(gallery):
             ProductImage.objects.create(product=product, image=f, sort_order=i)
     return Response(_product_json(product, request), status=201)
@@ -163,6 +237,7 @@ def product_detail(request, pk):
         if image:
             product.image = image
         product.save()
+        _save_tiers(product)
         if remove:
             for img in ProductImage.objects.filter(product=product, id__in=remove):
                 img.image.delete(save=False)
@@ -201,14 +276,14 @@ def _seller_orders(request, status_filter=None):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated, IsApprovedSeller])
+@permission_classes([IsAuthenticated, IsApprovedSellerOrReseller])
 def orders(request):
     """GET ?status=PLACED|CONFIRMED|SHIPPED|DELIVERED|CANCELLED: orders containing my products."""
     return Response(_seller_orders(request, request.GET.get("status") or None))
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated, IsApprovedSeller])
+@permission_classes([IsAuthenticated, IsApprovedSellerOrReseller])
 def update_item_status(request, pk):
     """POST {status}: move my order line forward (Placed -> Confirmed -> Shipped -> Delivered).
     Pass "order": true to update all my lines of that order at once."""

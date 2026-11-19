@@ -87,7 +87,22 @@ export default function CartScreen({ navigation }) {
                 {item.product.name}
               </Text>
               {item.product.brand ? <Text style={styles.brand}>{item.product.brand}</Text> : null}
-              <PriceRow price={item.product.price} mrp={item.product.mrp} discount={item.product.discount_percent} />
+              {item.price_type && item.price_type !== 'retail' ? (
+                <View>
+                  <PriceRow price={item.unit_price} mrp={item.product.price} discount={0} />
+                  <View style={styles.priceTag}>
+                    <Text style={styles.priceTagText}>
+                      {item.price_type === 'quote' ? `Quoted price · fixed ${item.quantity} pcs` : 'Wholesale price'}
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                <PriceRow price={item.product.price} mrp={item.product.mrp} discount={item.product.discount_percent} />
+              )}
+              {item.product.condition && item.product.condition !== 'new' ? (
+                <Text style={styles.brand}>Condition: {item.product.condition_display}</Text>
+              ) : null}
+              {item.moq_problem ? <Text style={styles.moq}>{item.moq_problem}</Text> : null}
               <View style={styles.qtyRow}>
                 <View style={styles.qtyBox}>
                   <Pressable style={styles.qtyBtn} onPress={() => change(item, item.quantity - 1)} hitSlop={6}>
@@ -130,6 +145,9 @@ export default function CartScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  priceTag: { alignSelf: 'flex-start', backgroundColor: '#EEF5FD', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2, marginTop: 3 },
+  priceTagText: { fontSize: 11, color: '#1565C0', fontWeight: '600' },
+  moq: { fontSize: 12, color: colors.danger, fontWeight: '600' },
   container: { flex: 1, backgroundColor: colors.bg },
   item: { flexDirection: 'row', gap: 12, backgroundColor: '#fff', padding: 12, marginTop: 8 },
   image: { width: 90, height: 90, borderRadius: 10, backgroundColor: colors.accentSoft },
