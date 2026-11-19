@@ -156,7 +156,8 @@ def register(request):
         return _err("This username is already taken.")
     existing = _find_user(email, role)
     if existing and existing.id not in stale_ids:
-        return _err(f"A {role} account with this email already exists. Please login instead.")
+        return _err(f"A {role} account with this email already exists. Please login - or tap "
+                    "'Forgot password?' on the login screen if you never set a password.")
 
     try:
         validate_password(password, User(username=username, email=email))
