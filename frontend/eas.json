@@ -12,13 +12,13 @@
       "android": { "buildType": "apk" },
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://vetri-shopping-backend.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://practice-mobile-app.onrender.com"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://vetri-shopping-backend.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://practice-mobile-app.onrender.com"
       }
     }
   },

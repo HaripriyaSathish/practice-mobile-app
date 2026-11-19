@@ -26,4 +26,4 @@ services:
       - key: EMAIL_HOST_PASSWORD
         sync: false
       - key: SITE_URL
-        sync: false          # e.g. https://vetri-shopping-backend.onrender.com/
+        sync: false          # e.g. https://practice-mobile-app.onrender.com/
