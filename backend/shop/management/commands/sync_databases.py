@@ -25,6 +25,13 @@ TABLES = ["auth_user", "auth_group", "auth_user_groups", "auth_user_user_permiss
           "shop_wishlistitem", "shop_address", "shop_order", "shop_orderitem", "django_admin_log", "django_session"]
 
 
+def _dump(alias, path):
+    # Write UTF-8 ourselves: dumpdata's output= uses the Windows code page, which breaks on letters like "é"
+    with open(path, "w", encoding="utf-8") as stream:
+        call_command("dumpdata", natural_foreign=True, exclude=EXCLUDE, format="xml", database=alias,
+                     stdout=stream, verbosity=0)
+
+
 class Command(BaseCommand):
     help = "Copy all app data from one database (mysql/neon) to the other, replacing the target's data."
 
@@ -53,14 +60,12 @@ class Command(BaseCommand):
         backups.mkdir(exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         backup = backups / f"{dst}-before-sync-{stamp}.xml"
-        call_command("dumpdata", natural_foreign=True, exclude=EXCLUDE, format="xml", database=dst,
-                     output=str(backup), verbosity=0)
+        _dump(dst, backup)
         self.stdout.write(f"Backup of {dst}: {backup}")
 
         with tempfile.TemporaryDirectory() as tmp:
             dump = Path(tmp) / "data.xml"
-            call_command("dumpdata", natural_foreign=True, exclude=EXCLUDE, format="xml", database=src,
-                         output=str(dump), verbosity=0)
+            _dump(src, dump)
             conn = connections[dst]
             with transaction.atomic(using=dst):
                 with conn.cursor() as c:
