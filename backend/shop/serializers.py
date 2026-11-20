@@ -51,7 +51,7 @@ class HomeSectionSerializer(serializers.ModelSerializer):
         fields = ["id", "title", "products"]
 
     def get_products(self, obj):
-        qs = obj.products.visible().select_related("seller__profile")
+        qs = obj.products.visible().select_related("category", "seller__profile")
         return ProductSerializer(qs, many=True, context=self.context).data
 
 

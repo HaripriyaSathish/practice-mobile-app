@@ -27,7 +27,7 @@ def home(request):
     return Response({
         "banners": BannerSerializer(Banner.objects.filter(is_active=True), many=True, context=ctx).data,
         "categories": CategorySerializer(Category.objects.filter(is_active=True), many=True, context=ctx).data,
-        "deals": ProductSerializer(Product.objects.visible().filter(is_featured=True).select_related("seller__profile")[:10],
+        "deals": ProductSerializer(Product.objects.visible().filter(is_featured=True).select_related("category", "seller__profile")[:10],
                                    many=True, context=ctx).data,
         "sections": HomeSectionSerializer(HomeSection.objects.filter(is_active=True), many=True, context=ctx).data
         + _preloved_section(ctx),
