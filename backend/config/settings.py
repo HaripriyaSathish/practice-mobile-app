@@ -143,14 +143,19 @@ REST_FRAMEWORK = {
 CORS_ALLOW_ALL_ORIGINS = True
 
 # ---------- Email (OTP + order updates) ----------
-# On Render (deployed, Neon DB): 1) SendGrid  2) Resend  - HTTPS APIs, because Render blocks SMTP.
+# On Render (deployed, Neon DB): 1) Brevo  2) SendGrid  3) Resend  - HTTPS APIs, because Render blocks SMTP.
 # Locally: Gmail SMTP only (API keys in .env are ignored), else emails are printed in the terminal.
 ON_RENDER = bool(os.getenv("RENDER"))
+BREVO_API_KEY = os.getenv("BREVO_API_KEY", "") if ON_RENDER else ""
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "") if ON_RENDER else ""
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "") if ON_RENDER else ""
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-if SENDGRID_API_KEY:
+if BREVO_API_KEY:
+    EMAIL_BACKEND = "config.email_backend.BrevoEmailBackend"
+    # must be a sender verified in Brevo (Senders, Domains & Dedicated IPs -> Senders)
+    DEFAULT_FROM_EMAIL = os.getenv("BREVO_FROM_EMAIL") or f"Vetri Shopping Hall <{EMAIL_HOST_USER}>"
+elif SENDGRID_API_KEY:
     EMAIL_BACKEND = "config.email_backend.SendGridEmailBackend"
     # must be a Single Sender verified in SendGrid (Settings -> Sender Authentication)
     DEFAULT_FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL") or f"Vetri Shopping Hall <{EMAIL_HOST_USER}>"

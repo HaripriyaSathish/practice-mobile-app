@@ -124,3 +124,50 @@ class SendGridEmailBackend(ResendEmailBackend):
             raise ResendError(detail or f"SendGrid API error {exc.code}") from None
         except urllib.error.URLError as exc:
             raise ResendError(f"Could not reach SendGrid: {exc.reason}") from None
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Brevo (HTTPS API, works on Render's free plan; free ~300 emails/day). Needs an API key (starts "xkeysib-",
+# NOT the "xsmtpsib-" SMTP key) and a sender verified in Brevo -> Senders.
+BREVO_URL = "https://api.brevo.com/v3/smtp/email"
+
+
+class BrevoEmailBackend(ResendEmailBackend):
+    def _send(self, message):
+        def people(addrs):
+            return [_split_address(a) for a in addrs]
+
+        payload = {
+            "sender": _split_address(message.from_email or settings.DEFAULT_FROM_EMAIL),
+            "to": people(message.to),
+            "subject": message.subject,
+            "textContent": message.body or " ",
+        }
+        if message.cc:
+            payload["cc"] = people(message.cc)
+        if message.bcc:
+            payload["bcc"] = people(message.bcc)
+        if message.reply_to:
+            payload["replyTo"] = _split_address(message.reply_to[0])
+        for body, mimetype in getattr(message, "alternatives", None) or []:
+            if mimetype == "text/html":
+                payload["htmlContent"] = body
+
+        request = urllib.request.Request(
+            BREVO_URL,
+            data=json.dumps(payload).encode(),
+            headers={"api-key": settings.BREVO_API_KEY, "Content-Type": "application/json",
+                     "accept": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                return json.loads(response.read() or b"{}")
+        except urllib.error.HTTPError as exc:
+            try:
+                detail = json.loads(exc.read()).get("message")
+            except Exception:
+                detail = None
+            raise ResendError(detail or f"Brevo API error {exc.code}") from None
+        except urllib.error.URLError as exc:
+            raise ResendError(f"Could not reach Brevo: {exc.reason}") from None
