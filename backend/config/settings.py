@@ -143,11 +143,18 @@ REST_FRAMEWORK = {
 CORS_ALLOW_ALL_ORIGINS = True
 
 # ---------- Email (OTP + order updates) ----------
-# 1) RESEND_API_KEY set -> Resend HTTPS API (works on Render)   2) Gmail SMTP   3) printed in the terminal
-RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+# On Render (deployed, Neon DB): 1) SendGrid  2) Resend  - HTTPS APIs, because Render blocks SMTP.
+# Locally: Gmail SMTP only (API keys in .env are ignored), else emails are printed in the terminal.
+ON_RENDER = bool(os.getenv("RENDER"))
+SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "") if ON_RENDER else ""
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "") if ON_RENDER else ""
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-if RESEND_API_KEY:
+if SENDGRID_API_KEY:
+    EMAIL_BACKEND = "config.email_backend.SendGridEmailBackend"
+    # must be a Single Sender verified in SendGrid (Settings -> Sender Authentication)
+    DEFAULT_FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL") or f"Vetri Shopping Hall <{EMAIL_HOST_USER}>"
+elif RESEND_API_KEY:
     EMAIL_BACKEND = "config.email_backend.ResendEmailBackend"
     # must use a domain verified in Resend; onboarding@resend.dev only reaches the Resend account owner
     DEFAULT_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "Vetri Shopping Hall <onboarding@resend.dev>")

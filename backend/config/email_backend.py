@@ -71,3 +71,56 @@ class ResendEmailBackend(BaseEmailBackend):
             raise ResendError(detail or f"Resend API error {exc.code}") from None
         except urllib.error.URLError as exc:
             raise ResendError(f"Could not reach Resend: {exc.reason}") from None
+
+
+# ---------------------------------------------------------------------------------------------------------
+# SendGrid (HTTPS API, works on Render). Unlike Resend's test mode it can email ANY address, as long as the
+# "from" address is a verified Single Sender (SendGrid -> Settings -> Sender Authentication).
+SENDGRID_URL = "https://api.sendgrid.com/v3/mail/send"
+
+
+def _split_address(value):
+    """'Vetri <a@b.com>' -> {'email': 'a@b.com', 'name': 'Vetri'}"""
+    from email.utils import parseaddr
+    name, addr = parseaddr(value)
+    return {"email": addr, **({"name": name} if name else {})}
+
+
+class SendGridEmailBackend(ResendEmailBackend):
+    def _send(self, message):
+        personalization = {"to": [_split_address(a) for a in message.to]}
+        if message.cc:
+            personalization["cc"] = [_split_address(a) for a in message.cc]
+        if message.bcc:
+            personalization["bcc"] = [_split_address(a) for a in message.bcc]
+        content = [{"type": "text/plain", "value": message.body or " "}]
+        for body, mimetype in getattr(message, "alternatives", None) or []:
+            if mimetype == "text/html":
+                content.append({"type": "text/html", "value": body})
+        payload = {
+            "personalizations": [personalization],
+            "from": _split_address(message.from_email or settings.DEFAULT_FROM_EMAIL),
+            "subject": message.subject,
+            "content": content,
+        }
+        if message.reply_to:
+            payload["reply_to"] = _split_address(message.reply_to[0])
+
+        request = urllib.request.Request(
+            SENDGRID_URL,
+            data=json.dumps(payload).encode(),
+            headers={"Authorization": f"Bearer {settings.SENDGRID_API_KEY}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=20):
+                return True
+        except urllib.error.HTTPError as exc:
+            try:
+                errors = json.loads(exc.read()).get("errors") or []
+                detail = "; ".join(e.get("message", "") for e in errors)
+            except Exception:
+                detail = None
+            raise ResendError(detail or f"SendGrid API error {exc.code}") from None
+        except urllib.error.URLError as exc:
+            raise ResendError(f"Could not reach SendGrid: {exc.reason}") from None
