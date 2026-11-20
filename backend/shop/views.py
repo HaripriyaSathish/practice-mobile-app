@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from accounts.permissions import IsBuyer
 
 from . import payments, pricing
+from .shipping import advance_open_shipments
 from .emails import invoice_context, order_from_token, send_order_confirmation
 from .models import (Address, Banner, CartItem, Category, HomeSection, Order,
                      OrderItem, Product, Quote, WishlistItem)
@@ -177,7 +178,9 @@ def addresses(request):
 def orders(request):
     """GET: my orders.  POST {address_id, payment_method}: place order from cart."""
     if request.method == "GET":
-        qs = Order.objects.filter(user=request.user).prefetch_related("items__product", "items__seller__profile")
+        advance_open_shipments()
+        qs = Order.objects.filter(user=request.user).prefetch_related("items__product", "items__seller__profile",
+                                                                       "items__shipment")
         return Response(OrderSerializer(qs, many=True, context={"request": request}).data)
 
     payment_method = request.data.get("payment_method", "COD")

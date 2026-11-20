@@ -22,7 +22,7 @@ TABLES = ["auth_user", "auth_group", "auth_user_groups", "auth_user_user_permiss
           "authtoken_token", "accounts_emailotp", "accounts_profile", "shop_banner", "shop_category",
           "shop_product", "shop_wholesaletier", "shop_quote", "shop_productimage", "shop_homesection",
           "shop_homesection_products", "shop_cartitem",
-          "shop_wishlistitem", "shop_address", "shop_order", "shop_orderitem", "django_admin_log", "django_session"]
+          "shop_wishlistitem", "shop_address", "shop_order", "shop_shipment", "shop_orderitem", "django_admin_log", "django_session"]
 
 
 def _dump(alias, path):

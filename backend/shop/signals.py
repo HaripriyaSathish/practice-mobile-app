@@ -8,6 +8,7 @@ from django.utils import timezone
 from .emails import send_status_update
 from .models import Order, Product
 from .multivendor import follow_order_status
+from .shipping import book_shipments
 
 
 @receiver(post_save, sender=Order)
@@ -21,6 +22,8 @@ def on_order_status_change(sender, instance, created, raw=False, **kwargs):
         return
 
     follow_order_status(instance)
+    if instance.status == "SHIPPED":
+        book_shipments(instance)  # store-owned items get a demo courier parcel too
     if instance.status == "CANCELLED":
         _handle_cancellation(instance)
 

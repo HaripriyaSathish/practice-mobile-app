@@ -339,6 +339,7 @@ class OrderItem(models.Model):
     gst_rate = models.PositiveSmallIntegerField(default=18)
     hsn_code = models.CharField(max_length=10, blank=True)
     seller_state = models.CharField(max_length=60, blank=True)
+    shipment = models.ForeignKey("Shipment", null=True, blank=True, related_name="items", on_delete=models.SET_NULL)
 
     @property
     def subtotal(self):
@@ -364,3 +365,30 @@ class OrderItem(models.Model):
             profile = getattr(self.seller, "profile", None)
             return (profile and profile.shop_name) or self.seller.username
         return HOUSE_STORE_NAME
+
+
+class Shipment(models.Model):
+    """One parcel: the items of one seller in one order, booked when those items are marked Shipped.
+
+    The courier is a demo ("mock") courier whose tracking moves forward by itself (see shop/shipping.py), so
+    the whole flow works without a courier account. A real courier API (e.g. Shiprocket) can replace it later.
+    """
+    STATUS_CHOICES = [("BOOKED", "Shipment booked"), ("PICKED_UP", "Picked up"), ("IN_TRANSIT", "In transit"),
+                      ("OUT_FOR_DELIVERY", "Out for delivery"), ("DELIVERED", "Delivered"),
+                      ("CANCELLED", "Cancelled")]
+
+    order = models.ForeignKey(Order, related_name="shipments", on_delete=models.CASCADE)
+    seller = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, related_name="shipments",
+                               on_delete=models.SET_NULL, help_text=f"Empty = shipped by {HOUSE_STORE_NAME}")
+    courier = models.CharField(max_length=40)
+    awb = models.CharField("AWB / tracking number", max_length=30, unique=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="BOOKED", db_index=True)
+    events = models.JSONField(default=list, blank=True, help_text="Tracking history, oldest first")
+    created_at = models.DateTimeField(auto_now_add=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.courier} {self.awb} ({self.get_status_display()})"

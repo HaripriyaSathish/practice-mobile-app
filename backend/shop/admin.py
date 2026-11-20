@@ -1,8 +1,8 @@
 from django.contrib import admin, messages
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 
 from .models import (Address, Banner, CartItem, Category, HomeSection, Order,
-                     OrderItem, Product, ProductImage, Quote, WholesaleTier, WishlistItem)
+                     OrderItem, Product, ProductImage, Quote, Shipment, WholesaleTier, WishlistItem)
 
 
 def thumb(image, size=60):
@@ -219,6 +219,31 @@ class OrderItemInline(admin.TabularInline):
         return False
 
 
+def _tracking_html(shipment):
+    if not shipment.events:
+        return "-"
+    rows = format_html_join("", "<li><b>{}</b> <span style='color:#888'>{} &middot; {}</span></li>", (
+        (e.get("message", ""), e.get("location", ""), e.get("at", "")[:16].replace("T", " "))
+        for e in shipment.events))
+    return format_html("<ol style='margin:0;padding-left:18px'>{}</ol>", rows)
+
+
+class ShipmentInline(admin.TabularInline):
+    model = Shipment
+    extra = 0
+    can_delete = False
+    fields = ("courier", "awb", "status", "seller", "tracking")
+    readonly_fields = fields
+    verbose_name_plural = "Shipments (demo courier - tracking moves forward automatically)"
+
+    @admin.display(description="Tracking")
+    def tracking(self, obj):
+        return _tracking_html(obj)
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 def _status_action(new_status, label):
     @admin.action(description=f"Mark selected orders as {label}")
     def action(modeladmin, request, queryset):
@@ -243,7 +268,7 @@ class OrderAdmin(admin.ModelAdmin):
     search_fields = ("id", "user__email", "full_name", "phone", "cf_order_id")
     readonly_fields = ("user", "total_amount", "created_at", "payment_method", "payment_status", "cf_order_id",
                        "cf_payment_id", "paid_at", "invoice_link", "cancelled_at", "refund_status", "refund_id")
-    inlines = [OrderItemInline]
+    inlines = [OrderItemInline, ShipmentInline]
     actions = [_status_action("CONFIRMED", "Confirmed"), _status_action("SHIPPED", "Shipped"),
                _status_action("DELIVERED", "Delivered"), _status_action("CANCELLED", "Cancelled")]
     fieldsets = (
@@ -256,10 +281,22 @@ class OrderAdmin(admin.ModelAdmin):
         ("Business buyer (B2B GST invoice)", {"fields": ("buyer_company", "buyer_gstin")}),
     )
 
+    def changelist_view(self, request, extra_context=None):
+        from .shipping import advance_open_shipments
+        advance_open_shipments()
+        return super().changelist_view(request, extra_context)
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        from .shipping import advance_open_shipments
+        advance_open_shipments()
+        return super().change_view(request, object_id, form_url, extra_context)
+
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
         from .models import Order as _Order
         from .multivendor import sync_order_status
+        from .shipping import book_shipments
+        book_shipments(form.instance)  # items set to Shipped here get a demo courier parcel
         sync_order_status(_Order.objects.get(pk=form.instance.pk))  # item status edits update the order
 
     @admin.display(description="Payment")
@@ -335,3 +372,29 @@ class QuoteAdmin(admin.ModelAdmin):
         if obj.status == "QUOTED" and "quoted_price" in form.changed_data:
             obj.valid_until = timezone.now() + timedelta(days=Quote.VALID_DAYS)
         super().save_model(request, obj, form, change)
+
+
+# ---------- Shipments (demo courier) ----------
+@admin.register(Shipment)
+class ShipmentAdmin(admin.ModelAdmin):
+    list_display = ("awb", "courier", "order", "sold_by", "status", "created_at", "delivered_at")
+    list_filter = ("status", "courier")
+    search_fields = ("awb", "order__id", "order__user__email")
+    readonly_fields = ("order", "seller", "courier", "awb", "status", "tracking", "created_at", "delivered_at")
+    exclude = ("events",)
+
+    @admin.display(description="Sold by")
+    def sold_by(self, obj):
+        return obj.items.first().seller_name if obj.items.exists() else "-"
+
+    @admin.display(description="Tracking history")
+    def tracking(self, obj):
+        return _tracking_html(obj)
+
+    def has_add_permission(self, request):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        from .shipping import advance_open_shipments
+        advance_open_shipments()
+        return super().changelist_view(request, extra_context)

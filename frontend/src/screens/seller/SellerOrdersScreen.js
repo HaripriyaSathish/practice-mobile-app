@@ -5,6 +5,7 @@ import { FlatList, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Vie
 import { api } from '../../api';
 import { Button, EmptyView, ErrorView, Loader, TopBar } from '../../components/common';
 import Text from '../../components/Text';
+import TrackingCard from '../../components/TrackingCard';
 import { colors, confirmAction, formatPrice, notify, shadow } from '../../theme';
 
 const FILTERS = [
@@ -17,7 +18,7 @@ const FILTERS = [
 ];
 const NEXT = {
   PLACED: ['CONFIRMED', 'Confirm & pack', 'cube-outline'],
-  CONFIRMED: ['SHIPPED', 'Mark as shipped', 'car-outline'],
+  CONFIRMED: ['SHIPPED', 'Ship with courier', 'car-outline'],
   SHIPPED: ['DELIVERED', 'Mark as delivered', 'checkmark-done-outline'],
 };
 const STATUS_LABEL = { PLACED: 'New', CONFIRMED: 'Packed', SHIPPED: 'Shipped', DELIVERED: 'Delivered', CANCELLED: 'Cancelled' };
@@ -33,10 +34,14 @@ function slowest(items) {
 function OrderCard({ order, onUpdated }) {
   const [busy, setBusy] = useState(false);
   const status = slowest(order.items);
-  const next = NEXT[status];
+  const tracking = order.items.find((i) => i.tracking)?.tracking;
+  // once a parcel is booked, the courier delivers it: no manual "Mark as delivered"
+  const next = status === 'SHIPPED' && tracking ? null : NEXT[status];
 
   const advance = () =>
-    confirmAction(next[1], `Order #${order.id}: mark your ${order.items.length} item(s) as ${next[0].toLowerCase()}? The buyer is emailed.`, async () => {
+    confirmAction(next[1], next[0] === 'SHIPPED'
+      ? `Order #${order.id}: hand your ${order.items.length} item(s) to the courier? A parcel with a tracking number is booked and delivery updates arrive automatically.`
+      : `Order #${order.id}: mark your ${order.items.length} item(s) as ${next[0].toLowerCase()}? The buyer is emailed.`, async () => {
       setBusy(true);
       try {
         const updated = await api(`/seller/order-items/${order.items[0].id}/status/`, { method: 'POST', body: { status: next[0], order: true } });
@@ -80,6 +85,7 @@ function OrderCard({ order, onUpdated }) {
           {order.address}
         </Text>
       </View>
+      <TrackingCard tracking={tracking} />
       <View style={styles.footer}>
         <Text style={styles.pay}>
           {order.payment_method_display} · <Text style={{ color: order.payment_status === 'PAID' ? colors.green : '#8a5a00' }}>{order.payment_status_display}</Text>

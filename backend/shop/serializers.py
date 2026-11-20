@@ -77,12 +77,17 @@ class OrderItemSerializer(serializers.ModelSerializer):
     condition_display = serializers.CharField(source="get_condition_display", read_only=True)
     can_resell = serializers.SerializerMethodField()
     resold_qty = serializers.SerializerMethodField()
+    tracking = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
         fields = ["id", "product", "product_name", "price", "quantity", "image", "seller", "seller_name",
                   "status", "status_display", "price_type", "price_type_display", "condition",
-                  "condition_display", "gst_rate", "hsn_code", "can_resell", "resold_qty"]
+                  "condition_display", "gst_rate", "hsn_code", "can_resell", "resold_qty", "tracking"]
+
+    def get_tracking(self, obj):
+        from .shipping import tracking_json
+        return tracking_json(obj.shipment) if obj.shipment_id else None
 
     def get_resold_qty(self, obj):
         return sum(p.stock + p.sold_count for p in obj.resale_listings.all()) if obj.pk else 0

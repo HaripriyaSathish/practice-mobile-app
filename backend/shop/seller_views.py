@@ -14,6 +14,7 @@ from accounts.permissions import IsApprovedSeller, IsApprovedSellerOrReseller, I
 
 from .models import Category, Order, OrderItem, Product, ProductImage
 from .multivendor import FLOW, stage, sync_order_status
+from .shipping import advance_open_shipments, book_shipments
 from .serializers import OrderItemSerializer, ProductDetailSerializer
 
 MAX_IMAGE_MB = 8
@@ -252,9 +253,10 @@ def product_detail(request, pk):
 
 # ---------------- orders ----------------
 def _seller_orders(request, status_filter=None):
+    advance_open_shipments()
     items = (OrderItem.objects.filter(seller=request.user)
              .exclude(order__payment_status="PENDING")  # online orders appear once paid
-             .select_related("order", "product", "seller__profile").order_by("-order__created_at", "id"))
+             .select_related("order", "product", "seller__profile", "shipment").order_by("-order__created_at", "id"))
     if status_filter:
         items = items.filter(status=status_filter)
     grouped = {}
@@ -302,6 +304,8 @@ def update_item_status(request, pk):
     if any(stage(new) <= stage(t.status) for t in targets):
         return _err("Status can only move forward.")
     targets.update(status=new, status_updated_at=timezone.now())
+    if new == "SHIPPED":
+        book_shipments(order)  # demo courier parcel; tracking then moves forward by itself
     order = Order.objects.get(pk=order.pk)  # fresh copy so the status-change email fires correctly
     sync_order_status(order)
     return Response(next((o for o in _seller_orders(request) if o["id"] == order.id), None))

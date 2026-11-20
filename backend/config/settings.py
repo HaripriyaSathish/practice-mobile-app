@@ -209,6 +209,7 @@ JAZZMIN_SETTINGS = {
         "shop.Product": "fas fa-box-open",
         "shop.HomeSection": "fas fa-layer-group",
         "shop.Order": "fas fa-receipt",
+        "shop.Shipment": "fas fa-truck",
         "shop.Address": "fas fa-map-marker-alt",
         "shop.CartItem": "fas fa-shopping-cart",
         "shop.WishlistItem": "fas fa-heart",
@@ -236,3 +237,6 @@ CASHFREE_API_VERSION = os.getenv("CASHFREE_API_VERSION", "2025-01-01")
 
 # Public address of this backend, used for invoice links in emails sent from the admin panel
 SITE_URL = os.getenv("SITE_URL", "http://127.0.0.1:8001/")
+
+# Demo courier: minutes between automatic tracking steps (Booked -> Picked up -> ... -> Delivered)
+SHIPPING_STEP_MINUTES = float(os.getenv("SHIPPING_STEP_MINUTES", "2"))

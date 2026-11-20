@@ -6,6 +6,7 @@ import Text from '../components/Text';
 import { api } from '../api';
 import { FadeInUp, SparkleBurst } from '../components/Animations';
 import { Button, EmptyView, ErrorView, Loader, TopBar } from '../components/common';
+import TrackingCard from '../components/TrackingCard';
 import { appReturnUrl, openPaymentPage } from '../payment';
 import { colors, formatPrice, notify } from '../theme';
 
@@ -26,6 +27,15 @@ const STATUS_COLORS = {
 };
 const PAY_COLORS = { PAID: colors.green, COD: '#B7791F', PENDING: '#6c757d', FAILED: colors.danger };
 const STEPS = ['PLACED', 'CONFIRMED', 'SHIPPED', 'DELIVERED'];
+
+// one entry per parcel (a parcel can hold several items from the same seller)
+function parcels(items) {
+  const seen = new Map();
+  items.forEach((it) => {
+    if (it.tracking && !seen.has(it.tracking.id)) seen.set(it.tracking.id, { tracking: it.tracking, seller: it.seller_name });
+  });
+  return [...seen.values()];
+}
 
 function Progress({ status }) {
   if (status === 'CANCELLED') return null;
@@ -193,6 +203,11 @@ export default function OrdersScreen({ route, navigation }) {
                     ) : null}
                   </View>
                 </View>
+              ))}
+
+              {parcels(o.items).map((pc, i, all) => (
+                <TrackingCard key={pc.tracking.id} tracking={pc.tracking}
+                  title={all.length > 1 ? `${pc.tracking.status_display} · from ${pc.seller}` : pc.tracking.status_display} />
               ))}
 
               <View style={styles.footRow}>
