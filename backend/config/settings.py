@@ -118,7 +118,7 @@ CLOUDINARY_FOLDER = os.getenv("CLOUDINARY_FOLDER", "vetri")
 STORAGES = {
     "default": {"BACKEND": "config.storage.CloudinaryMediaStorage" if USE_CLOUDINARY
                 else "django.core.files.storage.FileSystemStorage"},
-    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+    "staticfiles": {"BACKEND": "config.storage.LenientManifestStaticStorage"},
 }
 DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024  # seller photo uploads
 FILE_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024

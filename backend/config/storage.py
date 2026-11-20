@@ -70,3 +70,12 @@ class CloudinaryMediaStorage(Storage):
 
     def size(self, name):
         return 0
+
+
+from whitenoise.storage import CompressedManifestStaticFilesStorage
+
+
+class LenientManifestStaticStorage(CompressedManifestStaticFilesStorage):
+    """Jazzmin asks for static('vendor/bootswatch') (a folder, not a file), which a strict manifest
+    turns into a 500 on every admin page when DEBUG=False. Fall back to the plain URL instead."""
+    manifest_strict = False
